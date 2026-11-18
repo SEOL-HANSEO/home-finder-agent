@@ -468,9 +468,22 @@
             background: #1e293b;
             border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 14px;
-            height: 380px;
+            height: 420px;
+            min-height: 420px;
             overflow: hidden;
             position: relative;
+        }
+
+        #dynamicMap {
+            width: 100%;
+            height: 100%;
+            min-height: 420px;
+        }
+
+        /* Leaflet 타일 페이드인 깜빡임 및 빈 타일 방지 */
+        .leaflet-tile-container img {
+            width: 256px !important;
+            height: 256px !important;
         }
 
         iframe {
@@ -875,37 +888,52 @@
                         zoom: 15,
                         maxZoom: 19,
                         zoomControl: true,
-                        scrollWheelZoom: true
+                        scrollWheelZoom: true,
+                        trackResize: true,
+                        fadeAnimation: false // 페이드 애니메이션 중 회색 타일 잔상 방지
                     });
 
-                    // 1. OpenStreetMap 표준 타일 레이어 (골목길, 건물 번지수, 상가, 횡단보도까지 고배율 19레벨 완벽 지원)
-                    const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    // 1. VWorld 국토교통부 국가공간정보 표준 지도 (한국 정부 공식 제공, 키 불필요/차단 없음, 완벽 한국어)
+                    const vworldBase = L.tileLayer('https://xdworld.vworld.kr/2d/Base/service/{z}/{x}/{y}.png', {
                         maxZoom: 19,
-                        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                        minZoom: 6,
+                        keepBuffer: 6,
+                        attribution: '&copy; 공간정보오픈플랫폼(VWorld)'
                     });
 
-                    // 2. CartoDB Positron 레이어 (고해상도 레티나 지원, 깔끔한 도심 주거지 전용)
-                    const cartoLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-                        maxZoom: 19,
-                        attribution: '&copy; CartoDB &copy; OpenStreetMap'
-                    });
-
-                    // 3. ArcGIS World Street Map (위성/공간정보 보조)
+                    // 2. ArcGIS World Street Map (글로벌 표준, 키 완전 불필요, 403 없음)
                     const esriLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
                         maxZoom: 19,
                         maxNativeZoom: 18,
+                        keepBuffer: 6,
                         attribution: 'Tiles &copy; Esri'
                     });
 
-                    // 기본 레이어로 가장 상세한 OSM 타일 적용
-                    osmLayer.addTo(mapInstance);
+                    // 3. VWorld 백지도 (모던하고 깔끔한 주거지 뷰)
+                    const vworldWhite = L.tileLayer('https://xdworld.vworld.kr/2d/white/service/{z}/{x}/{y}.png', {
+                        maxZoom: 19,
+                        minZoom: 6,
+                        keepBuffer: 6,
+                        attribution: '&copy; VWorld'
+                    });
+
+                    // 기본 레이어로 대한민국 공식 VWorld 고화질 지도 적용
+                    vworldBase.addTo(mapInstance);
 
                     // 사용자가 지도 우측 상단에서 레이어를 직접 전환할 수 있도록 컨트롤 추가
                     L.control.layers({
-                        "상세 일반지도 (OSM 고해상도)": osmLayer,
-                        "깔끔한 도시지도 (Carto Voyager)": cartoLayer,
-                        "ArcGIS 스트리트맵": esriLayer
+                        "대한민국 국토부 고화질 지도 (VWorld)": vworldBase,
+                        "ArcGIS 스트리트맵": esriLayer,
+                        "깔끔한 백지도 (VWorld White)": vworldWhite
                     }, null, { position: 'topright' }).addTo(mapInstance);
+
+                    // 지도 컨테이너 자체의 크기 변화를 실시간 감지하여 즉시 타일 보정
+                    if (window.ResizeObserver) {
+                        const ro = new ResizeObserver(() => {
+                            if (mapInstance) mapInstance.invalidateSize({ pan: false });
+                        });
+                        ro.observe(mapContainer);
+                    }
                 } else {
                     mapInstance.setView([lat, lon], 15, { animate: false });
                 }
@@ -918,11 +946,14 @@
                     .bindPopup(`<strong>📍 ${title}</strong><br>출퇴근 추천 자취 지역`)
                     .openPopup();
                 
-                // 컨테이너 렌더링 즉시 및 지연 리사이즈 강제 호출 (타일이 잘리거나 휠 조작 전까지 안 뜨는 현상 완전 해결)
-                mapInstance.invalidateSize(true);
-                setTimeout(() => { if (mapInstance) mapInstance.invalidateSize(true); }, 100);
-                setTimeout(() => { if (mapInstance) mapInstance.invalidateSize(true); }, 300);
-                setTimeout(() => { if (mapInstance) mapInstance.invalidateSize(true); }, 600);
+                // 컨테이너 크기 재계산 즉각 및 지연 트리거
+                mapInstance.invalidateSize({ pan: false });
+                requestAnimationFrame(() => {
+                    if (mapInstance) mapInstance.invalidateSize({ pan: false });
+                });
+                setTimeout(() => { if (mapInstance) mapInstance.invalidateSize({ pan: false }); }, 50);
+                setTimeout(() => { if (mapInstance) mapInstance.invalidateSize({ pan: false }); }, 200);
+                setTimeout(() => { if (mapInstance) mapInstance.invalidateSize({ pan: false }); }, 500);
                 return;
             } catch (err) {
                 console.warn("Leaflet 로드 오류, 대체 iframe 적용:", err);
@@ -1378,10 +1409,14 @@
     // 초기 실행
     renderCards(localDefaults);
 
-    // 페이지 로드 완료 시 지도 타일 크기 재계산 (휠 조작 없이도 즉시 선명하게 표시)
+    // DOM 로딩 완료 직후 및 전체 리소스 로딩 완료 시 지도 타일 크기 즉시 보정
+    document.addEventListener('DOMContentLoaded', () => {
+        setTimeout(() => { if (mapInstance) mapInstance.invalidateSize({ pan: false }); }, 50);
+    });
+
     window.addEventListener('load', () => {
         if (mapInstance) {
-            mapInstance.invalidateSize(true);
+            mapInstance.invalidateSize({ pan: false });
         }
     });
 </script>
