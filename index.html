@@ -629,6 +629,29 @@
         <h1>대한민국 전국 자취지역 초고속 추천 & 주거비 분석</h1>
         <p class="desc">서울/경기뿐 아니라 전국 어디든 직장이나 학교 위치를 직접 입력하면, 고속 AI API가 최적 자취지역 5곳을 즉시 분석합니다.</p>
 
+        <!-- 작동 방식 간단 안내 바 -->
+        <div style="background: rgba(15, 23, 42, 0.55); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 10px; padding: 10px 14px; margin-bottom: 18px; font-size: 12px; color: #94a3b8; display: flex; align-items: center; justify-content: space-around; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <span style="color: #38bdf8; font-weight: 700;">1️⃣ 조건 입력:</span>
+                <span>직장/학교 위치 & 예산 선택</span>
+            </div>
+            <span style="color: rgba(255, 255, 255, 0.15);">➔</span>
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <span style="color: #10b981; font-weight: 700;">2️⃣ 실시간 지오코딩:</span>
+                <span>전국 좌표 자동 매핑</span>
+            </div>
+            <span style="color: rgba(255, 255, 255, 0.15);">➔</span>
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <span style="color: #fbbf24; font-weight: 700;">3️⃣ 자율 랭킹 & 비용 분석:</span>
+                <span>TOP 5 자취지 도출 & 실부담액 계산</span>
+            </div>
+            <span style="color: rgba(255, 255, 255, 0.15);">➔</span>
+            <div style="display: flex; align-items: center; gap: 5px;">
+                <span style="color: #a78bfa; font-weight: 700;">4️⃣ VWorld 국토부 지도:</span>
+                <span>동네 골목길 즉시 시각화</span>
+            </div>
+        </div>
+
         <div class="select-row">
             <div class="select-group">
                 <label for="workplaceInput">🏢 통근할 직장 / 학교 위치 입력 (예: 강남역, 판교 테크노밸리, 여의도, 부산 서면 등)</label>
@@ -734,6 +757,11 @@
                     </div>
                 </div>
                 <span style="font-size: 11px; background: rgba(16, 185, 129, 0.2); color: #6ee7b7; padding: 3px 8px; border-radius: 6px; font-weight: 700;">인증키 승인됨</span>
+            </div>
+
+            <!-- 하단 작동 원리 심층 설명 풋터 -->
+            <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 10px; padding: 10px 14px; font-size: 11px; color: #64748b; line-height: 1.6;">
+                💡 <strong>시스템 작동 메커니즘:</strong> 사용자가 입력한 목적지 위치를 기반으로 지오코더가 전국 좌표를 추적한 뒤, 설정된 예산·통근 선호도에 맞춰 주거 후보지를 동적으로 스크리닝합니다. 국토교통부 VWorld 고해상도 타일 엔진을 통해 드래그 없이도 실시간 위치가 즉각 시각화됩니다.
             </div>
         </div>
     </div>
