@@ -872,18 +872,42 @@
                 if (!mapInstance) {
                     mapInstance = L.map('dynamicMap', {
                         center: [lat, lon],
-                        zoom: 14,
+                        zoom: 15,
+                        maxZoom: 19,
                         zoomControl: true,
                         scrollWheelZoom: true
                     });
 
-                    // ArcGIS World Street Map (file:/// 로컬 파일에서도 403 차단 전혀 없음, 초고화질 한국어 지원)
-                    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+                    // 1. OpenStreetMap 표준 타일 레이어 (골목길, 건물 번지수, 상가, 횡단보도까지 고배율 19레벨 완벽 지원)
+                    const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                         maxZoom: 19,
-                        attribution: 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom'
-                    }).addTo(mapInstance);
+                        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    });
+
+                    // 2. CartoDB Positron 레이어 (고해상도 레티나 지원, 깔끔한 도심 주거지 전용)
+                    const cartoLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                        maxZoom: 19,
+                        attribution: '&copy; CartoDB &copy; OpenStreetMap'
+                    });
+
+                    // 3. ArcGIS World Street Map (위성/공간정보 보조)
+                    const esriLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+                        maxZoom: 19,
+                        maxNativeZoom: 18,
+                        attribution: 'Tiles &copy; Esri'
+                    });
+
+                    // 기본 레이어로 가장 상세한 OSM 타일 적용
+                    osmLayer.addTo(mapInstance);
+
+                    // 사용자가 지도 우측 상단에서 레이어를 직접 전환할 수 있도록 컨트롤 추가
+                    L.control.layers({
+                        "상세 일반지도 (OSM 고해상도)": osmLayer,
+                        "깔끔한 도시지도 (Carto Voyager)": cartoLayer,
+                        "ArcGIS 스트리트맵": esriLayer
+                    }, null, { position: 'topright' }).addTo(mapInstance);
                 } else {
-                    mapInstance.setView([lat, lon], 14, { animate: false });
+                    mapInstance.setView([lat, lon], 15, { animate: false });
                 }
 
                 if (mapMarker) {
