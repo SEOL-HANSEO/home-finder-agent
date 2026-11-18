@@ -545,37 +545,141 @@
             cursor: pointer;
         }
 
-        .terminal-box {
-            background: #090d16;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 10px;
-            padding: 14px;
-            font-family: 'Consolas', monospace;
-            font-size: 12px;
-            color: #10b981;
-            height: 200px;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
+        .how-link {
+            text-decoration: none;
         }
 
-        .log-line {
-            line-height: 1.4;
+        .how-it-works {
+            scroll-margin-top: 1rem;
+            margin-top: 18px;
+            padding: clamp(14px, 3vw, 24px);
+            border: 1px solid #334155;
+            border-radius: 18px;
+            background: #1e293b;
         }
 
-        .log-time {
-            color: #64748b;
+        .how-it-works h2 {
+            margin-bottom: 6px;
+            font-size: 20px;
         }
 
-        .auto-summary {
-            margin-top: 14px;
-            background: rgba(16, 185, 129, 0.1);
-            border: 1px solid rgba(16, 185, 129, 0.3);
-            border-radius: 10px;
-            padding: 12px;
+        .how-it-works > p {
+            color: #cbd5e1;
             font-size: 13px;
-            color: #6ee7b7;
+            line-height: 1.5;
+        }
+
+        .how-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .how-controls button:focus-visible {
+            outline: 2px solid #7dd3fc;
+            outline-offset: 3px;
+        }
+
+        .how-controls button:disabled {
+            opacity: .5;
+            cursor: default;
+        }
+
+        .how-controls [aria-pressed="true"] {
+            border-color: #38bdf8;
+            color: #e0f2fe;
+            background: #0c3750;
+        }
+
+        .how-diagram {
+            display: block;
+            width: 100%;
+            max-width: 760px;
+            margin: 14px auto;
+            border-radius: 12px;
+            background: #0f172a;
+        }
+
+        .how-node rect {
+            fill: #17243a;
+            stroke: #52617b;
+            stroke-width: 2;
+        }
+
+        .how-node.is-active rect {
+            fill: #0c3750;
+            stroke: #38bdf8;
+        }
+
+        .how-node text {
+            fill: #f1f5f9;
+            font-size: 22px;
+            font-weight: 700;
+        }
+
+        .how-node text + text {
+            fill: #cbd5e1;
+            font-size: 18px;
+            font-weight: 400;
+        }
+
+        .how-route {
+            fill: none;
+            stroke: #64748b;
+            stroke-width: 2;
+            marker-end: url(#howArrow);
+        }
+
+        .how-route.is-active {
+            stroke: #38bdf8;
+            stroke-width: 3;
+        }
+
+        .how-edge-label {
+            fill: #cbd5e1;
+            font-size: 16px;
+            font-weight: 700;
+            text-anchor: middle;
+        }
+
+        .how-position {
+            align-self: center;
+            color: #cbd5e1;
+            font-size: 13px;
+        }
+
+        .how-notes {
+            margin-top: 18px;
+            display: grid;
+            gap: 8px;
+        }
+
+        .how-notes details {
+            border: 1px solid #334155;
+            border-radius: 10px;
+            background: #0f172a;
+            padding: 12px;
+        }
+
+        .how-notes summary {
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .how-notes p {
+            margin-top: 8px;
+            color: #cbd5e1;
+            font-size: 13px;
+            line-height: 1.65;
+        }
+
+        .how-notes a {
+            color: #7dd3fc;
+        }
+
+        .how-detail {
+            min-height: 3.5em;
         }
 
         .check-list {
@@ -629,29 +733,6 @@
         <h1>대한민국 전국 자취지역 초고속 추천 & 주거비 분석</h1>
         <p class="desc">서울/경기뿐 아니라 전국 어디든 직장이나 학교 위치를 직접 입력하면, 고속 AI API가 최적 자취지역 5곳을 즉시 분석합니다.</p>
 
-        <!-- 작동 방식 간단 안내 바 -->
-        <div style="background: rgba(15, 23, 42, 0.55); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 10px; padding: 10px 14px; margin-bottom: 18px; font-size: 12px; color: #94a3b8; display: flex; align-items: center; justify-content: space-around; flex-wrap: wrap; gap: 8px;">
-            <div style="display: flex; align-items: center; gap: 5px;">
-                <span style="color: #38bdf8; font-weight: 700;">1️⃣ 조건 입력:</span>
-                <span>직장/학교 위치 & 예산 선택</span>
-            </div>
-            <span style="color: rgba(255, 255, 255, 0.15);">➔</span>
-            <div style="display: flex; align-items: center; gap: 5px;">
-                <span style="color: #10b981; font-weight: 700;">2️⃣ 실시간 지오코딩:</span>
-                <span>전국 좌표 자동 매핑</span>
-            </div>
-            <span style="color: rgba(255, 255, 255, 0.15);">➔</span>
-            <div style="display: flex; align-items: center; gap: 5px;">
-                <span style="color: #fbbf24; font-weight: 700;">3️⃣ 자율 랭킹 & 비용 분석:</span>
-                <span>TOP 5 자취지 도출 & 실부담액 계산</span>
-            </div>
-            <span style="color: rgba(255, 255, 255, 0.15);">➔</span>
-            <div style="display: flex; align-items: center; gap: 5px;">
-                <span style="color: #a78bfa; font-weight: 700;">4️⃣ VWorld 국토부 지도:</span>
-                <span>동네 골목길 즉시 시각화</span>
-            </div>
-        </div>
-
         <div class="select-row">
             <div class="select-group">
                 <label for="workplaceInput">🏢 통근할 직장 / 학교 위치 입력 (예: 강남역, 판교 테크노밸리, 여의도, 부산 서면 등)</label>
@@ -701,7 +782,7 @@
             </div>
             <div class="btn-group">
                 <button id="searchBtn" class="btn-auto" type="button">✨ AI 추천 지역 분석</button>
-                <button id="runAutoBtn" class="btn-checklist" type="button">⚡ 파이프라인 로그</button>
+                <a class="btn-checklist how-link" href="#how">구동 방식</a>
                 <button id="openChecklistBtn" class="btn-checklist" type="button">📋 점검표</button>
             </div>
         </div>
@@ -758,27 +839,79 @@
                 </div>
                 <span style="font-size: 11px; background: rgba(16, 185, 129, 0.2); color: #6ee7b7; padding: 3px 8px; border-radius: 6px; font-weight: 700;">인증키 승인됨</span>
             </div>
-
-            <!-- 하단 작동 원리 심층 설명 풋터 -->
-            <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 10px; padding: 10px 14px; font-size: 11px; color: #64748b; line-height: 1.6;">
-                💡 <strong>시스템 작동 메커니즘:</strong> 사용자가 입력한 목적지 위치를 기반으로 지오코더가 전국 좌표를 추적한 뒤, 설정된 예산·통근 선호도에 맞춰 주거 후보지를 동적으로 스크리닝합니다. 국토교통부 VWorld 고해상도 타일 엔진을 통해 드래그 없이도 실시간 위치가 즉각 시각화됩니다.
-            </div>
         </div>
     </div>
-</div>
 
-<!-- 모달 창들 -->
-<div id="autoModal" class="modal-overlay">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h2>🤖 홈파인더 자율 에이전트 실행 로그</h2>
-            <button id="autoClose" class="modal-close" type="button">&times;</button>
+    <section class="how-it-works" id="how" aria-labelledby="howTitle">
+        <h2 id="howTitle">홈파인더는 어떻게 만들어지고 배포됐을까요?</h2>
+        <p>AI의 도움으로 만든 화면 파일이 GitHub에 올라간 뒤, 방문자 브라우저에서 열리고 동작하는 경로입니다.</p>
+        <div class="how-controls" role="group" aria-label="재생할 경로">
+            <button class="btn-checklist" type="button" data-how-scenario="load" aria-pressed="true">GitHub 배포와 접속</button>
+            <button class="btn-checklist" type="button" data-how-scenario="search" aria-pressed="false">공개 사이트에서 검색</button>
         </div>
-        <div id="terminalLog" class="terminal-box"></div>
-        <div id="autoSummary" class="auto-summary" style="display: none;">
-            ✅ <strong>에이전트 탐색 완료:</strong> 최적 지역으로 <span id="autoWinner" style="color: #38bdf8; font-weight: bold;">추천 지역</span>이 선정되었습니다.
+        <svg class="how-diagram" viewBox="0 0 560 324" role="img" aria-labelledby="howDiagramTitle howDiagramDesc">
+            <title id="howDiagramTitle">홈파인더 GitHub Pages 배포 구성도</title>
+            <desc id="howDiagramDesc">GitHub Pages가 저장소의 화면 파일을 방문자 브라우저에 전달합니다. 브라우저는 검색을 처리하고 외부 지도 서비스에 직접 연결합니다.</desc>
+            <defs>
+                <marker id="howArrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+                    <path d="M0 0 10 5 0 10Z" fill="#94a3b8"/>
+                </marker>
+            </defs>
+            <path id="howPublish" class="how-route" d="M222 82 H338"/>
+            <path id="howPageRequest" class="how-route" d="M145 208 V177 H465 V135"/>
+            <path id="howPageResponse" class="how-route" d="M414 135 V155 H96 V208"/>
+            <path id="howMapRequest" class="how-route" d="M222 234 H338"/>
+            <path id="howMapResponse" class="how-route" d="M338 260 H222"/>
+            <text class="how-edge-label" x="280" y="69">배포</text>
+            <text class="how-edge-label" x="280" y="145">화면 파일</text>
+            <text class="how-edge-label" x="280" y="199">HTTPS 요청</text>
+            <text class="how-edge-label" x="280" y="221">외부 요청</text>
+            <g id="howRepo" class="how-node" text-anchor="middle">
+                <rect x="20" y="60" width="200" height="74" rx="14"/>
+                <text x="120" y="91">GitHub 저장소</text>
+                <text x="120" y="116">main · 소스 파일</text>
+            </g>
+            <g id="howPages" class="how-node" text-anchor="middle">
+                <rect x="340" y="60" width="200" height="74" rx="14"/>
+                <text x="440" y="91">GitHub Pages</text>
+                <text x="440" y="116">공개 주소 · 화면 배포</text>
+            </g>
+            <g id="howBrowser" class="how-node" text-anchor="middle">
+                <rect x="20" y="210" width="200" height="74" rx="14"/>
+                <text x="120" y="241">방문자 브라우저</text>
+                <text x="120" y="266">화면 · 검색 · 비용 계산</text>
+            </g>
+            <g id="howMap" class="how-node" text-anchor="middle">
+                <rect x="340" y="210" width="200" height="74" rx="14"/>
+                <text x="440" y="241">외부 지도 서비스</text>
+                <text x="440" y="266">장소 좌표 · 지도 이미지</text>
+            </g>
+            <g id="howPacket" visibility="hidden" aria-hidden="true">
+                <rect x="-51" y="-11" width="102" height="22" rx="11" fill="#7dd3fc"/>
+                <text id="howPacketLabel" y="5" text-anchor="middle" fill="#0f172a" font-size="13" font-weight="700"></text>
+                <animateMotion id="howMotion" dur="1.15s" begin="indefinite" fill="freeze"/>
+            </g>
+        </svg>
+        <p class="how-detail" aria-live="polite"><strong id="howStepTitle">AI의 도움으로 만든 파일을 GitHub에 올렸어요.</strong> <span id="howDetail">저장소의 main 브랜치에 화면 파일과 Python 파일이 함께 들어 있습니다.</span></p>
+        <div class="how-controls">
+            <button class="btn-checklist" id="howPrev" type="button" disabled>이전</button>
+            <button class="btn-checklist" id="howPlay" type="button">▶ 재생</button>
+            <button class="btn-checklist" id="howNext" type="button">다음</button>
+            <span class="how-position" id="howPosition">1 / 5</span>
         </div>
-    </div>
+        <div class="how-notes">
+            <details open>
+                <summary>GitHub는 어떤 역할을 하나요?</summary>
+                <p>GitHub 저장소는 코드와 변경 기록을 보관합니다. GitHub Pages는 올려둔 화면 파일을 방문자가 열 수 있는 웹 주소로 제공합니다. 이 프로젝트의 공개 배포 기록에는 <code>main</code> 브랜치가 남아 있습니다. 당시 코드를 올릴 때 웹에서 업로드했는지, Git 명령으로 푸시했는지는 기록만으로 확인하기 어렵습니다.</p>
+                <p><a href="https://github.com/SEOL-HANSEO/home-finder-agent/deployments">GitHub 배포 기록</a> · <a href="https://seol-hanseo.github.io/home-finder-agent/">원래 배포된 홈파인더</a></p>
+            </details>
+            <details open>
+                <summary>그러면 Gemini와 Python 서버는 어디에 있나요?</summary>
+                <p>저장소의 <code>app.py</code>에는 Flask라는 Python 웹 서버 코드가 있습니다. 이 서버를 별도로 켜고 Gemini 키를 설정했을 때의 연결은 <strong>브라우저 → Flask → Gemini → Flask → 브라우저</strong>입니다. Flask가 서버에서 키를 읽어 추천을 요청하고, 브라우저는 돌아온 후보로 카드를 만듭니다.</p>
+                <p>공개 GitHub Pages에서는 <code>index.html</code>을 브라우저로 보내고, Python 서버의 실행은 별도로 필요합니다. 현재 공개 주소에서 새 지역 추천 요청을 확인했을 때 서버 추천을 받지 못했습니다. 공개 페이지의 검색은 브라우저에 들어 있는 지역 후보나 예시 데이터로 이어지며, 지도와 장소 찾기는 브라우저가 외부 서비스에 직접 요청합니다.</p>
+            </details>
+        </div>
+    </section>
 </div>
 
 <div id="modalOverlay" class="modal-overlay">
@@ -1218,29 +1351,6 @@
         searchBtn.disabled = true;
         searchBtn.innerText = "⚡ 전국 실시간 AI 분석 중...";
 
-        const prompt = `직장/학교 위치: "${currentWork}".
-사용자가 대한민국 "${currentWork}" 위치로 매일 출퇴근/통학할 실제 자취방(원룸/오피스텔) 추천 동네 5곳을 엄선해주세요.
-조건: 예산 ${budgetText}, 통근 스타일 ${transitText}.
-표시할 대상은 "${currentWork}" 직장 자체가 아니라 사용자가 거주할 주변 자취방 동네들입니다.
-
-반드시 다른 부연설명이나 마크다운 없이 순수 JSON 배열([ ... ]) 형식으로만 출력하세요:
-[
-  {
-    "name": "자취 동네/역 이름 (예: 지변동 원룸촌)",
-    "keyword": "포털 원룸 검색어 (예: 지변동 원룸)",
-    "lat": 37.77,
-    "lon": 128.87,
-    "time": "통근시간 (예: 도보 7분)",
-    "price": "예상 월세 (예: 월 35~45만)",
-    "rentNum": 40,
-    "manageNum": 6,
-    "transitNum": 3,
-    "pro": "자취 환경 장점",
-    "con": "자취 환경 단점",
-    "route": "자취방에서 직장까지 출퇴근 상세 경로"
-  }
-]`;
-
         // 3. 백엔드 AI 권역 분석 엔드포인트(/api/recommend) 우선 연동 시도
         try {
             const beResp = await fetch('/api/recommend', {
@@ -1265,153 +1375,108 @@
                 }
             }
         } catch (e) {
-            console.log("백엔드 AI 연동 대기, 브라우저 직접 분석 파이프라인 가동:", e);
+            console.log("서버 추천을 불러오지 못해 예시를 표시합니다:", e);
         }
 
-        // 초고속 경량 AI 모델 호출
-        const FAST_MODELS = ['gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-flash-lite-latest', 'gemini-3.8-flash'];
-        let success = false;
-
-        for (const modelName of FAST_MODELS) {
-            try {
-                const directUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_DIRECT_KEY}`;
-                
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 7000);
-
-                const resp = await fetch(directUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    signal: controller.signal,
-                    body: JSON.stringify({
-                        contents: [{ parts: [{ text: prompt }] }],
-                        generationConfig: {
-                            temperature: 0.1,
-                            maxOutputTokens: 900
-                        }
-                    })
-                });
-                clearTimeout(timeoutId);
-
-                if (!resp.ok) continue;
-
-                const data = await resp.json();
-                const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-                
-                let cleanJson = rawText.trim();
-                // 다양한 형태의 마크다운 제거
-                const jsonStart = cleanJson.indexOf('[');
-                const jsonEnd = cleanJson.lastIndexOf(']');
-                if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
-                    cleanJson = cleanJson.substring(jsonStart, jsonEnd + 1);
-                } else {
-                    // 객체 형태({ "recommended_areas": [...] })로 왔을 경우 추출 시도
-                    const objStart = cleanJson.indexOf('{');
-                    const objEnd = cleanJson.lastIndexOf('}');
-                    if (objStart !== -1 && objEnd !== -1) {
-                        const parsedObj = JSON.parse(cleanJson.substring(objStart, objEnd + 1));
-                        const possibleArray = Object.values(parsedObj).find(val => Array.isArray(val));
-                        if (possibleArray) {
-                            cleanJson = JSON.stringify(possibleArray);
-                        }
-                    }
-                }
-
-                const parsedList = JSON.parse(cleanJson);
-                if (Array.isArray(parsedList) && parsedList.length > 0) {
-                    // 필드 표준화 (AI가 다른 키명으로 주었을 때 대비)
-                    const normalizedList = parsedList.map((item, idx) => ({
-                        name: item.name || item.area || item.area_name || `${currentWork} 인근 권역 ${idx+1}`,
-                        keyword: item.keyword || `${item.name || item.area || currentWork} 원룸`,
-                        lat: parseFloat(item.lat || item.latitude) || 37.5,
-                        lon: parseFloat(item.lon || item.longitude) || 127.0,
-                        bbox: item.bbox || `${((parseFloat(item.lon) || 127.0) - 0.02).toFixed(3)},${((parseFloat(item.lat) || 37.5) - 0.015).toFixed(3)},${((parseFloat(item.lon) || 127.0) + 0.02).toFixed(3)},${((parseFloat(item.lat) || 37.5) + 0.015).toFixed(3)}`,
-                        time: item.time || item.commute_time || "대중교통 15분",
-                        price: item.price || item.rent || `월 ${item.rentNum || 45}만원`,
-                        rentNum: parseInt(item.rentNum) || 45,
-                        manageNum: parseInt(item.manageNum) || 7,
-                        transitNum: parseInt(item.transitNum) || 5,
-                        pro: item.pro || item.advantage || "생활 편의시설 및 대중교통 접근성 우수",
-                        con: item.con || item.disadvantage || "출퇴근 시간대 교통 혼잡 체크 필요",
-                        route: item.route || item.commute_route || `${item.name || "인근 정류장"} ➔ ${currentWork}`
-                    }));
-
-                    candidates = applyFilterAndSort(normalizedList, budgetKey, transitKey);
-                    searchCache[cacheKey] = candidates;
-                    renderCards(candidates);
-                    document.getElementById('engineStatusText').innerText = `✨ [${currentWork}] 대한민국 실시간 AI 전국 분석 완료 (${modelName})!`;
-                    success = true;
-                    break;
-                }
-            } catch (err) {
-                console.warn(`모델 ${modelName} 시도 실패:`, err);
-            }
-        }
-
-        if (!success) {
-            // AI 호출이 모두 실패했을 때만 사용자가 입력한 검색어 맞춤형 동적 데이터 생성 (지역 기본 좌표 반영)
-            const dynamicList = [
-                { name: `${currentWork} 중심지/정류장 인근`, keyword: `${currentWork} 원룸`, lat: baseLat, lon: baseLon, time: "도보 5~10분", price: "월 35~45만", rentNum: 40, manageNum: 6, transitNum: 0, pro: "직장 바로 앞 완벽한 직주근접, 출퇴근 피로 최소화", con: "상권 인근 소음 확인 필요", route: `${currentWork} 도보 직주근접 출퇴근` },
-                { name: `${currentWork} 인근 조용한 주택가`, keyword: `${currentWork} 투룸`, lat: baseLat + 0.008, lon: baseLon + 0.008, time: "버스 10분", price: "월 32~42만", rentNum: 36, manageNum: 5, transitNum: 4, pro: "가성비 뛰어난 주거지역, 조용하고 한적한 자취 환경", con: "지하철역/버스정류장까지 도보 거리 소요", route: `인근 주택가 ➔ 버스 승차 ➔ ${currentWork} (10분)` },
-                { name: `${currentWork} 배후 대학가/원룸촌`, keyword: `${currentWork} 오피스텔`, lat: baseLat - 0.008, lon: baseLon - 0.008, time: "대중교통 15분", price: "월 30~40만", rentNum: 35, manageNum: 5, transitNum: 4, pro: "1인 가구 편의시설(빨래방, 편의점, 식당) 풍부", con: "구축 건물이 많아 수압 및 방음 점검 필수", route: `원룸촌 ➔ 시내버스 ➔ ${currentWork} (15분)` },
-                { name: `${currentWork} 관공서/신시가지 권역`, keyword: `${currentWork} 원룸`, lat: baseLat + 0.012, lon: baseLon - 0.012, time: "대중교통 12분", price: "월 40~50만", rentNum: 45, manageNum: 7, transitNum: 5, pro: "마트, 병원, 은행 등 생활 인프라 최상", con: "중심 상권 인근 야간 유동인구 많음", route: `중심가 ➔ 직통 대중교통 ➔ ${currentWork} (12분)` },
-                { name: `${currentWork} 외곽 가성비 신축단지`, keyword: `${currentWork} 신축`, lat: baseLat - 0.015, lon: baseLon + 0.015, time: "대중교통 20분", price: "월 28~38만", rentNum: 32, manageNum: 5, transitNum: 5, pro: "넓은 평수와 신축 깔끔한 인테리어, 월세 절약", con: "출퇴근 통근시간 약 20분 소요", route: `외곽 주거지 ➔ 시내버스 ➔ ${currentWork} (20분)` }
-            ];
-            candidates = applyFilterAndSort(dynamicList, budgetKey, transitKey);
-            renderCards(candidates);
-            document.getElementById('engineStatusText').innerText = `ℹ️ [${currentWork}] 실시간 맞춤 분석 데이터 적용 완료`;
-        }
+        const dynamicList = [
+            { name: `${currentWork} 중심지/정류장 인근`, keyword: `${currentWork} 원룸`, lat: baseLat, lon: baseLon, time: "도보 5~10분", price: "월 35~45만", rentNum: 40, manageNum: 6, transitNum: 0, pro: "직장 바로 앞 완벽한 직주근접, 출퇴근 피로 최소화", con: "상권 인근 소음 확인 필요", route: `${currentWork} 도보 직주근접 출퇴근` },
+            { name: `${currentWork} 인근 조용한 주택가`, keyword: `${currentWork} 투룸`, lat: baseLat + 0.008, lon: baseLon + 0.008, time: "버스 10분", price: "월 32~42만", rentNum: 36, manageNum: 5, transitNum: 4, pro: "가성비 뛰어난 주거지역, 조용하고 한적한 자취 환경", con: "지하철역/버스정류장까지 도보 거리 소요", route: `인근 주택가 ➔ 버스 승차 ➔ ${currentWork} (10분)` },
+            { name: `${currentWork} 배후 대학가/원룸촌`, keyword: `${currentWork} 오피스텔`, lat: baseLat - 0.008, lon: baseLon - 0.008, time: "대중교통 15분", price: "월 30~40만", rentNum: 35, manageNum: 5, transitNum: 4, pro: "1인 가구 편의시설(빨래방, 편의점, 식당) 풍부", con: "구축 건물이 많아 수압 및 방음 점검 필수", route: `원룸촌 ➔ 시내버스 ➔ ${currentWork} (15분)` },
+            { name: `${currentWork} 관공서/신시가지 권역`, keyword: `${currentWork} 원룸`, lat: baseLat + 0.012, lon: baseLon - 0.012, time: "대중교통 12분", price: "월 40~50만", rentNum: 45, manageNum: 7, transitNum: 5, pro: "마트, 병원, 은행 등 생활 인프라 최상", con: "중심 상권 인근 야간 유동인구 많음", route: `중심가 ➔ 직통 대중교통 ➔ ${currentWork} (12분)` },
+            { name: `${currentWork} 외곽 가성비 신축단지`, keyword: `${currentWork} 신축`, lat: baseLat - 0.015, lon: baseLon + 0.015, time: "대중교통 20분", price: "월 28~38만", rentNum: 32, manageNum: 5, transitNum: 5, pro: "넓은 평수와 신축 깔끔한 인테리어, 월세 절약", con: "출퇴근 통근시간 약 20분 소요", route: `외곽 주거지 ➔ 시내버스 ➔ ${currentWork} (20분)` }
+        ];
+        candidates = applyFilterAndSort(dynamicList, budgetKey, transitKey);
+        renderCards(candidates);
+        document.getElementById('engineStatusText').innerText = `ℹ️ [${currentWork}] 추천 예시 표시 중 (월세와 통근 시간은 확인 필요)`;
 
         searchBtn.disabled = false;
         searchBtn.innerText = "✨ AI 추천 자취방 분석";
     }
 
-    // 모달 및 이벤트 바인딩
-    const autoModal = document.getElementById('autoModal');
-    const terminalLog = document.getElementById('terminalLog');
-    const autoSummary = document.getElementById('autoSummary');
-    const autoWinner = document.getElementById('autoWinner');
+    const howScenarios = {
+        load: [
+            { node: 'howRepo', title: 'AI의 도움으로 만든 파일을 GitHub에 올렸어요.', detail: '저장소의 main 브랜치에 화면 파일과 Python 파일이 함께 들어 있습니다.' },
+            { node: 'howPages', route: 'howPublish', packet: 'main 배포', title: 'GitHub Pages에서 공개 주소를 제공해요.', detail: '배포 기록에서 main 브랜치가 GitHub Pages에 배포된 것을 확인할 수 있습니다.' },
+            { node: 'howPages', route: 'howPageRequest', packet: '페이지 요청', title: '방문자가 공개 주소를 열어요.', detail: '방문자의 브라우저가 HTTPS로 GitHub Pages에 접속합니다.' },
+            { node: 'howBrowser', route: 'howPageResponse', packet: 'index.html', title: '브라우저가 파일을 받아 화면을 만들어요.', detail: 'index.html 안에 있는 HTML·CSS·JavaScript를 읽어 검색 폼과 추천 카드를 표시합니다.' },
+            { node: 'howMap', route: 'howMapRequest', packet: '지도 요청', title: '지도는 브라우저에서 별도로 불러와요.', detail: '브라우저의 지도 코드가 외부 서비스에 지도 이미지를 요청해 화면에 표시합니다.' }
+        ],
+        search: [
+            { node: 'howBrowser', title: '브라우저가 검색을 처리해요.', detail: '입력한 지역이 앱에 들어 있는 지역이면 브라우저가 내장 후보를 찾아 바로 비교합니다.' },
+            { node: 'howMap', route: 'howMapRequest', packet: '장소 이름', title: '좌표가 없는 지역은 지도 서비스에 물어요.', detail: '브라우저가 OpenStreetMap의 장소 검색 서비스인 Nominatim에 지역 이름을 보냅니다.' },
+            { node: 'howBrowser', route: 'howMapResponse', packet: '위도·경도', title: '브라우저가 찾은 위치를 받아요.', detail: '장소가 검색되면 돌려받은 위도와 경도를 지도에 사용합니다.' },
+            { node: 'howPages', route: 'howPageRequest', packet: '추천 API', title: '공개 페이지의 추천 요청은 처리되지 않아요.', detail: '화면 코드가 /api/recommend에 요청하지만, 이 GitHub Pages 주소에서는 Python 추천 서버가 실행되지 않아 추천 결과가 오지 않습니다.' },
+            { node: 'howBrowser', title: '브라우저가 예시를 표시해요.', detail: '서버 추천을 받지 못하면 브라우저가 예시 후보를 만들고, 조건에 따라 정렬합니다. 카드를 선택하면 월세·관리비·교통비를 합산합니다.' }
+        ]
+    };
+    const howNodes = document.querySelectorAll('.how-node, .how-route');
+    const howTitle = document.getElementById('howStepTitle');
+    const howDetail = document.getElementById('howDetail');
+    const howPrev = document.getElementById('howPrev');
+    const howPlay = document.getElementById('howPlay');
+    const howNext = document.getElementById('howNext');
+    const howPacket = document.getElementById('howPacket');
+    const howPacketLabel = document.getElementById('howPacketLabel');
+    const howPosition = document.getElementById('howPosition');
+    const howMotion = document.getElementById('howMotion');
+    const howModes = document.querySelectorAll('[data-how-scenario]');
+    const howReduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    let howSteps = howScenarios.load;
+    let howIndex = 0;
+    let howTimer = null;
 
-    document.getElementById('runAutoBtn').addEventListener('click', () => {
-        autoModal.classList.add('active');
-        terminalLog.innerHTML = '';
-        autoSummary.style.display = 'none';
+    function showHowStep(index) {
+        howIndex = index;
+        const step = howSteps[index];
+        howNodes.forEach(element => element.classList.toggle('is-active', element.id === step.node || element.id === step.route));
+        howTitle.textContent = step.title;
+        howDetail.textContent = step.detail;
+        howPosition.textContent = `${index + 1} / ${howSteps.length}`;
+        howPrev.disabled = index === 0;
+        howNext.disabled = index === howSteps.length - 1;
+        howPacket.setAttribute('visibility', 'hidden');
+        if (step.route && !howReduceMotion.matches && typeof howMotion.beginElement === 'function') {
+            howPacketLabel.textContent = step.packet;
+            howMotion.setAttribute('path', document.getElementById(step.route).getAttribute('d'));
+            howMotion.beginElement();
+            howPacket.setAttribute('visibility', 'visible');
+        }
+    }
 
-        const logs = [
-            `[SYSTEM] 홈파인더 대한민국 전국 탐색 파이프라인 가동...`,
-            `[AGENT:Scout] [${currentWork}] 전국 좌표계 및 반경 40분 통근망 스캔 완료`,
-            `[AGENT:Crawler] 전국 부동산 실거래가 및 급매물 데이터 스크리닝 중`,
-            `[AGENT:Filter] 사용자 예산 조건(${document.getElementById('budgetSelect').selectedOptions[0].text}) 필터링 통과`,
-            `[AGENT:Risk] 등기부 대출금(근저당) 비율 60% 이하 안심 매물 점검 완료`,
-            `[AGENT:Decision] 대한민국 전국 단위 1순위 최적 거주지 도출 성공!`
-        ];
+    function pauseHow() {
+        clearInterval(howTimer);
+        howTimer = null;
+        howPlay.textContent = howIndex === howSteps.length - 1 ? '↻ 다시 재생' : '▶ 재생';
+    }
 
-        let index = 0;
-        const interval = setInterval(() => {
-            if (index < logs.length) {
-                const nowStr = new Date().toTimeString().split(' ')[0];
-                const line = document.createElement('div');
-                line.className = 'log-line';
-                line.innerHTML = `<span class="log-time">[${nowStr}]</span> ${logs[index]}`;
-                terminalLog.appendChild(line);
-                terminalLog.scrollTop = terminalLog.scrollHeight;
-                index++;
-            } else {
-                clearInterval(interval);
-                if (selectedItem) {
-                    autoWinner.innerText = selectedItem.name;
-                }
-                autoSummary.style.display = 'block';
-            }
-        }, 350);
+    function selectHowStep(index) {
+        showHowStep(index);
+        pauseHow();
+    }
+
+    howModes.forEach(button => {
+        button.addEventListener('click', () => {
+            howModes.forEach(mode => mode.setAttribute('aria-pressed', String(mode === button)));
+            howSteps = howScenarios[button.dataset.howScenario];
+            selectHowStep(0);
+        });
     });
+    howPrev.addEventListener('click', () => selectHowStep(howIndex - 1));
+    howNext.addEventListener('click', () => selectHowStep(howIndex + 1));
+    howPlay.addEventListener('click', () => {
+        if (howTimer !== null) {
+            pauseHow();
+            return;
+        }
 
-    document.getElementById('autoClose').addEventListener('click', () => {
-        autoModal.classList.remove('active');
+        if (howIndex === howSteps.length - 1) showHowStep(0);
+        howPlay.textContent = 'Ⅱ 일시정지';
+        howTimer = setInterval(() => {
+            showHowStep(howIndex + 1);
+            if (howIndex === howSteps.length - 1) pauseHow();
+        }, 3000);
     });
-    autoModal.addEventListener('click', (e) => {
-        if (e.target === autoModal) autoModal.classList.remove('active');
-    });
+    showHowStep(0);
 
     const modalOverlay = document.getElementById('modalOverlay');
     document.getElementById('openChecklistBtn').addEventListener('click', () => {
