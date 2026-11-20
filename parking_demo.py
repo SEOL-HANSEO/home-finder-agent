@@ -74,7 +74,13 @@ def account(mode):
                     raise store.SupabaseError()
             except store.SupabaseError as exc:
                 store.record(None, mode, "failure")
-                if exc.status in (400, 401, 422):
+                if exc.status == 429:
+                    if mode == "signup":
+                        error = "인증 메일 발송 또는 가입 요청이 너무 많습니다. 잠시 기다린 뒤 다시 시도해 주세요."
+                    else:
+                        error = "로그인 요청이 너무 많습니다. 잠시 기다린 뒤 다시 시도해 주세요."
+                    status = 429
+                elif exc.status in (400, 401, 422):
                     error, status = "이메일이나 비밀번호를 확인해 주세요.", 400
                 else:
                     error, status = "인증 서비스를 사용할 수 없습니다. 설정과 연결 상태를 확인해 주세요.", 503
