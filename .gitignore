@@ -31,3 +31,6 @@ $RECYCLE.BIN/
 *.tar.gz
 *.bak
 *.swp
+
+# Local parking demo database
+/instance/

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>관리자 기록 | 무료주차장 찾기</title>
+  <style>
+    body { margin: 0; background: #f2f7f4; color: #173c45; font: 15px/1.6 system-ui,sans-serif; }
+    main { max-width: 960px; margin: 48px auto; padding: 0 20px; }
+    a { color: #08745f; } h1 { margin-bottom: 4px; }
+    .wrap { overflow-x: auto; background: white; border: 1px solid #dce9e2; border-radius: 14px; margin-top: 24px; }
+    table { border-collapse: collapse; width: 100%; text-align: left; }
+    th, td { padding: 13px 16px; border-bottom: 1px solid #e6efea; white-space: nowrap; }
+    th { font-size: 13px; color: #536d66; background: #f8fbf9; }
+  </style>
+</head>
+<body><main>
+  <a href="{{ url_for('parking_demo.parking') }}">← 주차장 검색</a>
+  <h1>활동 기록</h1><p>최근 100건</p>
+  <div class="wrap"><table>
+    <thead><tr><th>시각 (UTC)</th><th>계정 별칭</th><th>행동</th><th>판정</th><th>결과 수</th><th>제공자 호출</th></tr></thead>
+    <tbody>{% for log in logs %}<tr><td>{{ log.created_at }}</td><td>{{ log.actor_alias }}</td><td>{{ log.action }}</td><td>{{ log.outcome }}</td><td>{{ log.result_count }}</td><td>{{ log.provider_calls }}</td></tr>{% else %}<tr><td colspan="6">기록이 없습니다.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <h2>주차장 데이터 변경 기록</h2><p>최근 100건</p>
+  <div class="wrap"><table>
+    <thead><tr><th>시각 (UTC)</th><th>관리자 ID</th><th>주차장 ID</th><th>작업</th></tr></thead>
+    <tbody>{% for change in changes %}<tr><td>{{ change.occurred_at }}</td><td>{{ change.actor_id or '시스템' }}</td><td>{{ change.parking_lot_id }}</td><td>{{ change.operation }}</td></tr>{% else %}<tr><td colspan="4">기록이 없습니다.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</main></body>
+</html>

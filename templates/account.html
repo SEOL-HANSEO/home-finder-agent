@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ "로그인" if mode == "login" else "회원가입" }} | 무료주차장 찾기</title>
+  <script>try { document.documentElement.dataset.theme = localStorage.getItem('parking-theme') || 'light'; } catch (error) {}</script>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f2f7f4; color: #152d29; font: 15px/1.6 system-ui, sans-serif; }
+    main { width: min(440px, calc(100% - 32px)); margin: 9vh auto; }
+    a { color: #08745f; }
+    .brand { font-size: 15px; font-weight: 800; text-decoration: none; }
+    .card { background: white; border: 1px solid #dce9e2; border-radius: 20px; padding: 36px; margin-top: 22px; box-shadow: 0 15px 50px #234a3712; }
+    h1 { font-size: 28px; margin: 0 0 8px; letter-spacing: -.05em; }
+    p { color: #718882; font-size: 14px; }
+    label { display: block; font-size: 13px; font-weight: 700; margin: 20px 0 7px; }
+    input { width: 100%; height: 50px; border: 1px solid #d2e2da; border-radius: 9px; padding: 0 13px; font: inherit; }
+    button { width: 100%; height: 50px; border: 0; border-radius: 9px; background: #08745f; color: white; font: 700 15px system-ui; margin-top: 24px; cursor: pointer; }
+    .error { color: #a83e36; }
+    [data-theme="dark"] body { background: #101c1b; color: #e6f2ed; }
+    [data-theme="dark"] .card { background: #1a2b28; border-color: #344b46; }
+    [data-theme="dark"] input { background: #101e1c; color: #e6f2ed; border-color: #435a54; }
+    [data-theme="dark"] a { color: #8ce3c4; }
+    [data-theme="dark"] p { color: #a3b8b1; }
+    [data-theme="dark"] .error { color: #ffaaa3; }
+  </style>
+</head>
+<body>
+<main>
+  <a class="brand" href="{{ url_for('parking_demo.parking') }}">← 무료주차장 찾기</a>
+  <div class="card">
+    <h1>{{ "다시 만나서 반가워요" if mode == "login" else "회원가입" }}</h1>
+    <p>{{ "로그인하고 주변 무료 주차장을 모두 확인하세요." if mode == "login" else "계정을 만들고 주변 무료 주차장을 확인하세요." }}</p>
+    <form method="post">
+      <input type="hidden" name="form_token" value="{{ form_token }}">
+      <label for="username">이메일</label>
+      <input id="username" name="username" type="email" autocomplete="username" maxlength="254" required>
+      <label for="password">비밀번호</label>
+      <input id="password" name="password" type="password" autocomplete="{{ 'current-password' if mode == 'login' else 'new-password' }}" minlength="8" maxlength="128" required>
+      {% if notice %}<p role="status">{{ notice }}</p>{% endif %}
+      {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+      <button>{{ "로그인" if mode == "login" else "가입하기" }}</button>
+    </form>
+    {% if mode == 'login' %}<p>아직 계정이 없나요? <a href="{{ url_for('parking_demo.account', mode='signup') }}">회원가입</a></p>
+    {% else %}<p>이미 계정이 있나요? <a href="{{ url_for('parking_demo.account', mode='login') }}">로그인</a></p>{% endif %}
+  </div>
+</main>
+</body>
+</html>
