@@ -1,5 +1,6 @@
 """Gemini-backed parking conversation; parking facts come from the provider."""
 import json
+import re
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -10,6 +11,7 @@ URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generate
 SYSTEM = """당신은 한국의 무료 주차장 검색을 돕는 친절한 대화 도우미입니다.
 사용자가 목적지를 알려주고 검색을 원하면 action을 search로, 검색할 실제 지역이나 주소를 location에,
 원하는 유형을 place_type에 담으세요. 검색 위치가 모호하면 먼저 구체적인 위치를 질문하세요.
+검색 지역은 최신 사용자 메시지에 직접 적힌 장소명을 그대로 사용하세요. 장소명을 임의로 다른 시·군·역·동으로 바꾸거나 주변 지역으로 추측하지 마세요. '근처/주변/인근'은 위치명에서 빼세요. 사용자가 '거기/그 근처/같은 곳'처럼 명확히 앞선 검색을 가리킬 때만 이전 위치를 이어 쓰세요. 위치가 메시지에서 확인되지 않으면 먼저 지역이나 역 이름을 질문하세요.
 사용자가 대화를 이어가면 이전 문맥과 현재 검색 결과를 활용하세요.
 한 문장에 주차장 검색과 즐겨찾기 추가가 함께 요청되면 action은 search로 하고 favorite_after_search를 true로 설정하세요. 검색을 마친 뒤 검색 결과 중 요청한 주차장을 찜합니다. 검색만 요청했으면 false로 설정하세요.
 주차장 검색이면 search, 검색 결과를 즐겨찾기에 추가하면 favorite_add, 저장한 즐겨찾기를 지우면 favorite_remove,
@@ -103,6 +105,23 @@ def respond(message, history, places=None, authenticated=False):
                 or (action == "search" and not location.strip())):
             raise ValueError("Invalid model response")
         result = {"action": action, "reply": reply.strip()[:500], "location": location.strip(), "place_type": kind}
+        if action == "search":
+            current_text = re.sub(r"[^\w가-힣]", "", message.casefold())
+            prior_text = re.sub(r"[^\w가-힣]", "", " ".join(
+                entry.get("text", "") for entry in history[-6:]
+                if isinstance(entry, dict) and isinstance(entry.get("text"), str)
+            ).casefold())
+            requested = re.sub(r"\s*(?:근처|주변|인근|가까이)$", "", location.strip())
+            normalized = re.sub(r"[^\w가-힣]", "", requested.casefold())
+            base = re.sub(r"(?:특별자치도|특별자치시|광역시|특별시|시|군|구|읍|면|동|역)$", "", normalized)
+            context_reference = bool(re.search(r"(거기|그\s*근처|같은\s*곳|이\s*근처|앞서\s*검색|아까\s*검색|더\s*찾아)", message))
+            if normalized not in current_text and not (len(base) >= 2 and base in current_text):
+                if context_reference and normalized and normalized in prior_text:
+                    pass
+                else:
+                    result.update(action="reply", reply="요청에서 검색할 지역을 확인하지 못했어요. 예: 전주역 근처 주차장 찾아줘", location="")
+            elif normalized not in current_text and len(base) >= 2 and base in current_text:
+                result["location"] = base
         if action == "search" and favorite_after_search:
             number = answer.get("number", 0)
             target_name = answer.get("target_name", "")
