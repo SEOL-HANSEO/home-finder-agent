@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>관리자 기록 | 무료주차장 찾기</title>
+  <script>try { document.documentElement.dataset.theme = localStorage.getItem('parking-theme') || 'light'; } catch (_) {}</script>
   <style>
     body { margin: 0; background: #f2f7f4; color: #173c45; font: 15px/1.6 system-ui,sans-serif; }
     main { max-width: 960px; margin: 48px auto; padding: 0 20px; }
@@ -12,6 +13,10 @@
     th, td { padding: 13px 16px; border-bottom: 1px solid #e6efea; white-space: nowrap; }
     th { font-size: 13px; color: #536d66; background: #f8fbf9; }
     input { padding: 9px; width: min(26em, 90%); } button { padding: 9px 12px; cursor: pointer; }
+    [data-theme="dark"] body { background: #101c1b; color: #e6f2ed; }
+    [data-theme="dark"] .wrap, [data-theme="dark"] input, [data-theme="dark"] button { background: #1a2b28; color: #e6f2ed; border-color: #344b46; }
+    [data-theme="dark"] th { background: #25433a; color: #c6e1d3; }
+    [data-theme="dark"] a { color: #8ce3c4; }
   </style>
 </head>
 <body><main>

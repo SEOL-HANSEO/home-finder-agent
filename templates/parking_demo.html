@@ -350,15 +350,16 @@
         });
       } catch (error) { list.textContent = ''; status.textContent = error.message; }
     }
-    document.querySelectorAll('[data-favorite-token]').forEach((button) => {
-      button.addEventListener('click', async () => {
-        button.disabled = true;
-        const body = new FormData(); body.set('form_token', csrf); body.set('action', 'add'); body.set('place', button.dataset.favoriteToken);
-        try { const result = await request(endpoint, body); status.textContent = result.message; await refresh(); }
-        catch (error) { status.textContent = error.message; }
-        finally { button.disabled = false; }
-      });
+    document.getElementById('results-body').addEventListener('click', async (event) => {
+      const button = event.target.closest('[data-favorite-token]');
+      if (!button) return;
+      button.disabled = true;
+      const body = new FormData(); body.set('form_token', csrf); body.set('action', 'add'); body.set('place', button.dataset.favoriteToken);
+      try { const result = await request(endpoint, body); status.textContent = result.message; await refresh(); }
+      catch (error) { status.textContent = error.message; }
+      finally { button.disabled = false; }
     });
+    window.addEventListener('parking:favorites', refresh);
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       const button = form.querySelector('button'); button.disabled = true; status.textContent = '요청을 처리하고 있습니다…';
@@ -422,6 +423,12 @@
       }, 1800);
       render();
     });
+    window.addEventListener('parking:operation', (event) => {
+      if (event.detail.type !== 'guide') return;
+      const control = {previous, next, play}[event.detail.value];
+      if (control && !control.disabled) control.click();
+      document.getElementById('service-guide-heading').scrollIntoView({behavior: 'smooth', block: 'start'});
+    });
     render();
   })();
   const themeButton = document.getElementById('theme-toggle');
@@ -431,6 +438,11 @@
     themeButton.setAttribute('aria-pressed', String(dark));
   }
   showTheme();
+  window.addEventListener('parking:theme', showTheme);
+  window.addEventListener('parking:preferences', (event) => {
+    document.getElementById('location').value = event.detail.location;
+    document.getElementById('place-type').value = event.detail.place_type;
+  });
   themeButton.addEventListener('click', () => {
     const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
     document.documentElement.dataset.theme = next;
@@ -478,6 +490,53 @@
       marker.openPopup();
       if (window.innerWidth <= 760) document.getElementById('map').scrollIntoView({behavior: 'smooth'});
     }
+    window.addEventListener('parking:operation', (event) => {
+      const operation = event.detail;
+      if (operation.type === 'favorites') document.getElementById('favorite-heading').scrollIntoView({behavior: 'smooth', block: 'start'});
+      if (operation.type === 'map_select') activatePlace(operation.value);
+      if (operation.type === 'map_zoom' && map) {
+        if (operation.value === 'in') map.zoomIn();
+        if (operation.value === 'out') map.zoomOut();
+      }
+    });
+    window.addEventListener('parking:search', (event) => {
+      const view = event.detail;
+      const places = view.places || [];
+      const body = document.getElementById('results-body');
+      document.getElementById('location').value = view.location;
+      document.getElementById('place-type').value = view.place_type;
+      document.getElementById('result-count').textContent = `${places.length}곳`;
+      body.replaceChildren();
+      if (!places.length) {
+        const empty = document.createElement('div'); empty.className = 'empty';
+        const icon = document.createElement('div'); icon.className = 'empty-icon'; icon.textContent = 'P';
+        const title = document.createElement('strong'); title.textContent = '검색 결과가 없습니다';
+        empty.append(icon, title, document.createTextNode('다른 지역이나 주차장명으로 검색해 보세요.')); body.appendChild(empty);
+      } else {
+        const list = document.createElement('ul'); list.className = 'places';
+        places.forEach((place, index) => {
+          const item = document.createElement('li');
+          const button = document.createElement('button'); button.type = 'button'; button.className = 'place';
+          if (place.lat != null && place.lon != null) button.dataset.marker = String(index); else button.disabled = true;
+          const heading = document.createElement('span'); heading.className = 'place-heading';
+          const name = document.createElement('strong'); name.textContent = `${index + 1}. ${place.name}`;
+          const free = document.createElement('span'); free.className = 'free'; free.textContent = '무료'; heading.append(name, free);
+          const address = document.createElement('small'); address.textContent = place.area;
+          const detail = document.createElement('small');
+          const types = {all: '전체', off_street: '노외 주차장', on_street: '노상 주차장'};
+          detail.textContent = `${types[place.place_type] || '기타'} · ${place.distance_km}km` + (place.spaces ? ` · ${place.spaces}면` : '') + (place.reference_date ? ` · 기준일 ${place.reference_date}` : '') + (place.provider ? ` · 제공 ${place.provider}` : '');
+          button.append(heading, address, detail); item.appendChild(button);
+          if (place.favorite_token) {
+            const favorite = document.createElement('button'); favorite.type = 'button'; favorite.className = 'favorite-action';
+            favorite.dataset.favoriteToken = place.favorite_token; favorite.textContent = '☆ 즐겨찾기 추가'; item.appendChild(favorite);
+          }
+          list.appendChild(item);
+        });
+        body.appendChild(list);
+      }
+      showMarkers(places);
+      if (map && view.center) map.setView(view.center, 13);
+    });
     document.getElementById('results-body').addEventListener('click', (event) => {
       const button = event.target.closest('[data-marker]');
       if (button) activatePlace(Number(button.dataset.marker));

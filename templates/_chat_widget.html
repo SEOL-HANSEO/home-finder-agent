@@ -25,7 +25,7 @@
   <section class="chat-window" id="floating-chat-window" aria-label="AI 주차장 대화" hidden>
     <div class="chat-header"><div><strong>AI 주차장 도우미</strong><small>어느 화면에서나 이어서 대화해요</small></div><button class="chat-close" id="floating-chat-close" type="button" aria-label="대화창 닫기">×</button></div>
     <div class="chat-log" id="floating-chat-log" role="log" aria-live="polite"></div>
-    <p class="chat-disclosure">비로그인·일반 회원 하루 3회, 관리자 10회 · 비로그인은 같은 네트워크에서 횟수를 공유할 수 있어요. 대화는 Google Gemini에 전송됩니다.</p>
+    <p class="chat-disclosure">비로그인·일반 회원 하루 3회, 관리자 10회 · 대화와 현재 검색 결과는 Google Gemini에 전송됩니다.</p>
     <form class="chat-compose" id="floating-chat-form" action="{{ url_for('parking_demo.assistant') }}" method="post">
       <input type="hidden" name="form_token" value="{{ form_token }}">
       <input name="message" maxlength="500" required aria-label="메시지" placeholder="예: 서울역 근처 무료 주차장">
@@ -56,6 +56,7 @@
       const bubble = document.createElement('div'); bubble.className = 'chat-bubble' + (entry.role === 'user' ? ' user' : '');
       bubble.textContent = entry.text;
       if (Array.isArray(entry.places)) entry.places.forEach((place) => { const detail = document.createElement('small'); detail.textContent = `${place.name} · ${place.distance_km}km · ${place.area}`; bubble.appendChild(detail); });
+      if (entry.link === 'https://www.data.go.kr/data/15012896/standard.do') { const link = document.createElement('a'); link.href = entry.link; link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = ' 데이터 출처 열기 ↗'; bubble.appendChild(link); }
       log.appendChild(bubble);
     });
     log.scrollTop = log.scrollHeight;
@@ -73,9 +74,41 @@
       const data = await response.json().catch(() => ({}));
       let text = data.message || (response.status === 429 ? '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' : '응답을 받지 못했습니다. 잠시 후 다시 시도해 주세요.');
       if (Number.isInteger(data.remaining)) text += `\n오늘 남은 횟수: ${data.remaining}회`;
-      state.messages.push({role: 'assistant', text, places: data.places || []});
+      state.messages.push({role: 'assistant', text, places: data.places || [], link: data.link || ''});
+      if (data.theme === 'dark' || data.theme === 'light') {
+        document.documentElement.dataset.theme = data.theme;
+        try { localStorage.setItem('parking-theme', data.theme); } catch (_) {}
+        window.dispatchEvent(new CustomEvent('parking:theme'));
+      }
+      if (data.preferences) window.dispatchEvent(new CustomEvent('parking:preferences', {detail: data.preferences}));
+      if (data.favorites_changed) {
+        window.dispatchEvent(new CustomEvent('parking:favorites'));
+        if (!document.getElementById('favorite-list')) data.navigate = {{ url_for('parking_demo.parking', from_chat='1') | tojson }} + '#favorite-heading';
+      }
+      if (data.search) {
+        if (document.getElementById('results-body')) window.dispatchEvent(new CustomEvent('parking:search', {detail: data.search}));
+        else data.navigate = {{ url_for('parking_demo.parking', from_chat='1') | tojson }};
+      }
+      const operation = data.open_favorites ? {type: 'favorites'} : Number.isInteger(data.map_index) ? {type: 'map_select', value: data.map_index} : data.map_zoom ? {type: 'map_zoom', value: data.map_zoom} : data.guide ? {type: 'guide', value: data.guide} : null;
+      if (operation) {
+        if (document.getElementById('results-body')) window.dispatchEvent(new CustomEvent('parking:operation', {detail: operation}));
+        else {
+          try { sessionStorage.setItem('parking-pending-operation', JSON.stringify(operation)); } catch (_) {}
+          data.navigate = {{ url_for('parking_demo.parking', from_chat='1') | tojson }};
+        }
+      }
+      if (data.admin_changed && window.location.pathname === {{ url_for('parking_demo.admin') | tojson }}) data.navigate = {{ url_for('parking_demo.admin') | tojson }};
+      if (data.navigate) { state.messages = state.messages.slice(-16); save(); window.location.assign(data.navigate); }
     } catch (_) { state.messages.push({role: 'assistant', text: '서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.'}); }
     finally { state.messages = state.messages.slice(-16); button.disabled = false; render(); }
+  });
+  window.addEventListener('DOMContentLoaded', () => {
+    if (!document.getElementById('results-body')) return;
+    try {
+      const pending = JSON.parse(sessionStorage.getItem('parking-pending-operation') || 'null');
+      sessionStorage.removeItem('parking-pending-operation');
+      if (pending) window.dispatchEvent(new CustomEvent('parking:operation', {detail: pending}));
+    } catch (_) {}
   });
   render();
 })();

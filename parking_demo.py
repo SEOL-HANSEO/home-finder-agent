@@ -50,6 +50,72 @@ def add_favorite(user, token, place):
     return key
 
 
+def clear_login(user):
+    store.record(user["id"] if user else None, "logout", "success")
+    history, search = session.get("assistant_history", []), session.get("search_view")
+    session.clear()
+    if history:
+        session["assistant_history"] = history
+    if search:
+        session["search_view"] = search
+
+
+def set_administrator(actor, token, target, grant):
+    if not store.is_admin(token) or not store.is_owner(token):
+        abort(403)
+    try:
+        target = str(UUID(target.strip()))
+    except (ValueError, AttributeError):
+        abort(400, "올바른 사용자 ID를 입력해 주세요.")
+    if not grant and target == actor["id"]:
+        abort(400, "최고 관리자 본인의 권한은 해제할 수 없습니다.")
+    if grant:
+        store.call("/rest/v1/parking_admins?on_conflict=user_id", method="POST", token=token,
+                   body={"user_id": target}, prefer="resolution=ignore-duplicates,return=minimal")
+    else:
+        store.call("/rest/v1/parking_admins?user_id=eq." + target, method="DELETE", token=token, prefer="return=minimal")
+
+
+def select_place(items, number=0, name="", default_first=False):
+    if name:
+        normalized = "".join(name.split()).casefold()
+        matches = [p for p in items if normalized in "".join(p.get("name", "").split()).casefold()]
+        return matches[0] if len(matches) == 1 else None
+    if 1 <= number <= len(items):
+        return items[number - 1]
+    return items[0] if items and (default_first or len(items) == 1) else None
+
+
+def explicit_removal_reference(message, number, name):
+    """Avoid deleting a guessed favorite when the user did not identify it."""
+    compact = "".join(message.split()).casefold()
+    if re.search(r"(하지마|하지말|하지않|말아|말고|취소)", compact):
+        return False
+    if name and "".join(name.split()).casefold() in compact:
+        return True
+    if number and (re.search(rf"(?<!\d){number}\s*번", message) or
+                   (number == 1 and re.search(r"첫\s*번|첫째", message)) or
+                   (number == 2 and re.search(r"두\s*번|둘째", message)) or
+                   (number == 3 and re.search(r"세\s*번|셋째", message))):
+        return True
+    return False
+
+
+def search_view(location, kind, center, places):
+    return {"location": location, "place_type": kind, "center": center, "places": places}
+
+
+def client_search_view(view, user):
+    places = view["places"] if user else view["places"][:5]
+    result = {**view, "places": []}
+    for place in places:
+        item = dict(place)
+        if user and item.get("lat") is not None and item.get("lon") is not None:
+            item["favorite_token"] = favorite_token(item)
+        result["places"].append(item)
+    return result
+
+
 def form_token():
     return session.setdefault("parking_form_token", secrets.token_urlsafe(32))
 
@@ -125,12 +191,14 @@ def account(mode):
                 token = data.get("access_token")
                 if token:
                     user = store.get_user(token)
-                    history = session.get("assistant_history", [])
+                    history, search = session.get("assistant_history", []), session.get("search_view")
                     session.clear()
                     session.rotate()
                     session["access_token"] = token
                     if history:
                         session["assistant_history"] = history
+                    if search:
+                        session["search_view"] = search
                     store.record(user["id"], mode, "success")
                     return redirect(url_for(".parking"), code=303)
                 if mode == "signup":
@@ -171,15 +239,17 @@ def parking():
             admin = store.is_admin(token)
         except store.SupabaseError:
             abort(503, "계정 정보를 불러오지 못했습니다.")
+    if request.method == "GET" and request.args.get("from_chat") == "1":
+        view = session.get("search_view")
+        if view:
+            values = (view["location"], view["place_type"])
+            center = view["center"]
+            results = view["places"] if user else view["places"][:5]
     if request.method == "POST":
         check_form_token()
         action = request.form.get("action")
         if action == "logout":
-            store.record(user["id"] if user else None, "logout", "success")
-            history = session.get("assistant_history", [])
-            session.clear()
-            if history:
-                session["assistant_history"] = history
+            clear_login(user)
             return redirect(url_for(".parking"), code=303)
         if action not in ("search", "save"):
             abort(400)
@@ -204,6 +274,7 @@ def parking():
             provider_calls.set(0)
             try:
                 results, center = nearby_parking(location, place_type, limit=None if user else 5)
+                session["search_view"] = search_view(location, place_type, center, results)
                 store.record(user["id"] if user else None, "search", "success", len(results), provider_calls.get())
             except ParkingProviderError as error:
                 store.record(user["id"] if user else None, "search", "failure", calls=provider_calls.get())
@@ -301,18 +372,7 @@ def admin():
                 abort(400)
             if not owner:
                 abort(403)
-            try:
-                target = str(UUID(request.form.get("user_id", "").strip()))
-            except ValueError:
-                abort(400, "올바른 사용자 ID를 입력해 주세요.")
-            if action == "grant_admin":
-                store.call("/rest/v1/parking_admins?on_conflict=user_id", method="POST", token=token,
-                           body={"user_id": target}, prefer="resolution=ignore-duplicates,return=minimal")
-            elif action == "revoke_admin":
-                if target == user["id"]:
-                    abort(400, "최고 관리자 본인의 권한은 해제할 수 없습니다.")
-                store.call("/rest/v1/parking_admins?user_id=eq." + target, method="DELETE", token=token,
-                           prefer="return=minimal")
+            set_administrator(user, token, request.form.get("user_id", ""), action == "grant_admin")
             return redirect(url_for(".admin", updated="1"), code=303)
         logs = store.call("/rest/v1/parking_audit?select=created_at,actor_alias,action,outcome,result_count,provider_calls&order=created_at.desc&limit=100", token=token)
         changes = store.call("/rest/v1/parking_admin_activity?select=occurred_at,actor_id,parking_lot_id,operation&order=occurred_at.desc&limit=100", token=token)
@@ -343,17 +403,145 @@ def assistant():
         return jsonify(message=text), 429
     try:
         history = session.get("assistant_history", [])
-        answer = ai_assistant.respond(message, history)
+        previous_view = session.get("search_view") or {}
+        context_places = previous_view.get("places", [])
+        if not user:
+            context_places = context_places[:5]
+        answer = ai_assistant.respond(message, history, context_places)
     except ai_assistant.AssistantError as error:
         return jsonify(message=str(error), remaining=remaining), 503
     if answer["action"] == "reply":
         session["assistant_history"] = (history + [{"role": "user", "text": message},
                                         {"role": "model", "text": answer["reply"]}])[-6:]
         return jsonify(message=answer["reply"], places=[], remaining=remaining)
+    if answer["action"] != "search":
+        action = answer["action"]
+        extra = {}
+        try:
+            if action in ("favorite_add", "favorite_remove", "favorite_view", "save_preferences", "admin_grant", "admin_revoke") and not user:
+                reply = "이 기능은 로그인 후 사용할 수 있어요. 로그인한 뒤 다시 말씀해 주세요."
+            elif action == "favorite_add":
+                places = previous_view.get("places", [])
+                place = select_place(places, answer.get("number", 0), answer.get("target_name", ""), default_first=True)
+                if re.search(r"(하지\s*마|하지\s*말|말고|취소)", message):
+                    reply = "즐겨찾기를 추가하지 않았어요."
+                elif not place:
+                    reply = "먼저 주차장을 검색하고, 저장할 주차장 이름이나 번호를 알려주세요."
+                else:
+                    favorite = {key: place[key] for key in ("name", "area", "lat", "lon")}
+                    add_favorite(user, session["access_token"], favorite)
+                    reply = f"{place['name']}을(를) 즐겨찾기에 추가했어요."
+                    extra["favorites_changed"] = True
+            elif action == "favorite_remove":
+                items = store.call("/rest/v1/parking_favorites?select=place_key,name,area,lat,lon,created_at&order=created_at.desc&limit=200", token=session["access_token"])
+                number, name = answer.get("number", 0), answer.get("target_name", "")
+                place = (select_place(items, number, name) if explicit_removal_reference(message, number, name)
+                         else items[0] if len(items) == 1 and re.search(r"(즐겨찾기|저장).*(삭제|제거|지워)", message) and not re.search(r"(하지\s*마|하지\s*말|말고|취소)", message) else None)
+                if not place:
+                    reply = "삭제할 즐겨찾기의 이름이나 목록 번호를 알려주세요."
+                else:
+                    store.call("/rest/v1/parking_favorites?place_key=eq." + place["place_key"], method="DELETE", token=session["access_token"], prefer="return=minimal")
+                    reply = f"{place['name']}을(를) 즐겨찾기에서 삭제했어요."
+                    extra["favorites_changed"] = True
+            elif action == "favorite_view":
+                reply = "즐겨찾기 목록을 보여드릴게요."
+                extra["open_favorites"] = True
+            elif action == "save_preferences":
+                location = answer.get("location") or previous_view.get("location", "")
+                same_location = "".join(location.split()) == "".join(previous_view.get("location", "").split())
+                kind = previous_view.get("place_type", "all") if same_location else answer.get("place_type", "all")
+                if not location or len(location) > 100 or kind not in PLACE_TYPES:
+                    reply = "기본 검색으로 저장할 지역을 먼저 알려주세요."
+                else:
+                    store.save_preferences(session["access_token"], user["id"], location, kind)
+                    store.record(user["id"], "save", "success")
+                    reply = f"{location}을(를) 기본 검색 위치로 저장했어요."
+                    extra["preferences"] = {"location": location, "place_type": kind}
+            elif action == "theme":
+                theme = answer.get("theme")
+                if theme not in ("dark", "light"):
+                    reply = "다크 모드와 화이트 모드 중 어떤 화면을 원하세요?"
+                else:
+                    extra["theme"] = theme
+                    reply = "다크 모드로 바꿨어요." if theme == "dark" else "화이트 모드로 바꿨어요."
+            elif action == "map_select":
+                place = select_place(context_places, answer.get("number", 0), answer.get("target_name", ""), default_first=True)
+                if not place or place.get("lat") is None or place.get("lon") is None:
+                    reply = "지도에서 볼 주차장을 먼저 검색하고 이름이나 번호를 알려주세요."
+                else:
+                    extra["map_index"] = context_places.index(place)
+                    reply = f"지도에서 {place['name']} 위치를 보여드릴게요."
+            elif action == "map_zoom":
+                direction = answer.get("direction")
+                if direction in ("in", "out"):
+                    extra["map_zoom"] = direction
+                    reply = "지도를 확대했어요." if direction == "in" else "지도를 축소했어요."
+                else:
+                    reply = "지도를 확대할까요, 축소할까요?"
+            elif action == "guide":
+                direction = answer.get("direction")
+                if direction in ("next", "previous", "play"):
+                    extra["guide"] = direction
+                    reply = "서비스 안내를 조작할게요."
+                else:
+                    reply = "서비스 안내를 재생하거나 이전·다음 단계로 이동할 수 있어요."
+            elif action == "open_source":
+                extra["link"] = "https://www.data.go.kr/data/15012896/standard.do"
+                reply = "주차장 데이터 출처를 열 수 있는 링크예요."
+            elif action == "navigate":
+                page = answer.get("page")
+                if page == "admin" and (not user or not store.is_admin(session["access_token"])):
+                    reply = "관리자 화면은 관리자 계정으로 로그인해야 열 수 있어요."
+                elif page in ("home", "login", "signup", "admin"):
+                    extra["navigate"] = (url_for(".parking", from_chat="1") if page == "home" else
+                                         url_for(".admin") if page == "admin" else url_for(".account", mode=page))
+                    reply = {"home": "검색 화면으로 이동할게요.", "login": "로그인 화면으로 이동할게요.", "signup": "회원가입 화면으로 이동할게요.", "admin": "관리자 화면으로 이동할게요."}[page]
+                else:
+                    reply = "어느 화면으로 이동할까요?"
+            elif action == "logout":
+                if not re.search(r"(로그\s*아웃|sign\s*out|log\s*out)", message, re.I) or re.search(r"(하지\s*마|하지\s*말|말고|취소)", message):
+                    reply = "로그아웃을 원하시면 말씀해 주세요."
+                else:
+                    reply = "로그아웃했어요." if user else "이미 로그아웃되어 있어요."
+                    extra["navigate"] = url_for(".parking", from_chat="1")
+            elif action in ("admin_grant", "admin_revoke"):
+                target = answer.get("user_id", "").strip()
+                if not store.is_owner(session["access_token"]):
+                    reply = "관리자 권한은 최고 관리자만 변경할 수 있어요."
+                elif not target or target.casefold() not in message.casefold():
+                    reply = "권한을 변경할 사용자의 ID를 메시지에 직접 적어 주세요."
+                elif re.search(r"(하지\s*마|하지\s*말|말고|취소|금지)", message) or not re.search(r"(관리자|admin)", message, re.I) or not re.search(r"(부여|추가|지정|줘|해제|회수|제거|삭제)", message):
+                    reply = "관리자 권한을 부여할지 해제할지 명확히 말씀해 주세요."
+                elif action == "admin_grant" and re.search(r"(해제|회수|제거|삭제)", message):
+                    reply = "관리자 권한 변경 요청을 다시 확인해 주세요."
+                elif action == "admin_revoke" and not re.search(r"(해제|회수|제거|삭제)", message):
+                    reply = "관리자 권한 변경 요청을 다시 확인해 주세요."
+                else:
+                    try:
+                        target = str(UUID(target))
+                    except ValueError:
+                        reply = "사용자 ID 형식을 확인해 주세요."
+                    else:
+                        if action == "admin_revoke" and target == user["id"]:
+                            reply = "최고 관리자 본인의 권한은 해제할 수 없어요."
+                        else:
+                            set_administrator(user, session["access_token"], target, action == "admin_grant")
+                            reply = "관리자 권한을 부여했어요." if action == "admin_grant" else "관리자 권한을 해제했어요."
+                            extra["admin_changed"] = True
+            else:
+                reply = "요청을 처리하지 못했어요. 다시 말씀해 주세요."
+        except (store.SupabaseError, KeyError, TypeError):
+            return jsonify(message="요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.", remaining=remaining), 503
+        session["assistant_history"] = (history + [{"role": "user", "text": message}, {"role": "model", "text": reply}])[-6:]
+        if action == "logout" and user and extra.get("navigate"):
+            clear_login(user)
+        return jsonify(message=reply, remaining=remaining, **extra)
     location, kind = answer["location"], answer["place_type"]
     provider_calls.set(0)
     try:
-        places, _ = nearby_parking(location, kind, limit=3)
+        places, center = nearby_parking(location, kind, limit=None if user else 5)
+        view = search_view(location, kind, center, places)
+        session["search_view"] = view
         store.record(user["id"] if user else None, "search", "success", len(places), provider_calls.get())
     except ParkingProviderError as error:
         store.record(user["id"] if user else None, "search", "failure", calls=provider_calls.get())
@@ -364,4 +552,4 @@ def assistant():
         reply = f"'{location}'에서 가까운 무료 주차장이에요. 직선거리 기준이며 실제 이용 가능 여부는 현장에서 확인해 주세요."
     session["assistant_history"] = (history + [{"role": "user", "text": message},
                                     {"role": "model", "text": reply}])[-6:]
-    return jsonify(message=reply, places=places, remaining=remaining)
+    return jsonify(message=reply, places=places[:3], remaining=remaining, search=client_search_view(view, user))

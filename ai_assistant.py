@@ -10,17 +10,36 @@ URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generate
 SYSTEM = """당신은 한국의 무료 주차장 검색을 돕는 친절한 대화 도우미입니다.
 사용자가 목적지를 알려주고 검색을 원하면 action을 search로, 검색할 실제 지역이나 주소를 location에,
 원하는 유형을 place_type에 담으세요. 검색 위치가 모호하면 먼저 구체적인 위치를 질문하세요.
-사용자가 대화를 이어가면 이전 문맥을 활용하세요. 사용자가 검색을 요청하지 않았다면 action은 reply입니다.
+사용자가 대화를 이어가면 이전 문맥과 현재 검색 결과를 활용하세요.
+주차장 검색이면 search, 검색 결과를 즐겨찾기에 추가하면 favorite_add, 저장한 즐겨찾기를 지우면 favorite_remove,
+기본 검색 설정을 저장하면 save_preferences, 화면 모드 변경이면 theme, 화면 이동이면 navigate,
+로그아웃이면 logout, 관리자 권한 부여/해제면 admin_grant/admin_revoke를 선택하세요.
+지도에서 검색 결과를 보여 달라는 요청은 map_select, 지도 확대/축소는 map_zoom,
+즐겨찾기 목록을 열어 달라는 요청은 favorite_view, 데이터 출처를 열어 달라는 요청은 open_source,
+서비스 안내 재생·이전·다음 요청은 guide로 처리하고 그 외에는 reply로 답하세요.
+즐겨찾기 요청에 번호가 있으면 number에 숫자를, 이름이 있으면 target_name에 이름을 적으세요.
+번호나 이름 없이 현재 검색 결과를 즐겨찾기에 추가해 달라면 가장 가까운 첫 번째 결과를 선택하세요.
+삭제 대상이 모호하면 number를 0으로 하고 target_name을 비워서 사용자에게 다시 물어보도록 하세요.
+theme은 dark 또는 light, navigate의 page는 home, login, signup, admin 중 하나입니다.
+지도 조작 direction은 in 또는 out, 서비스 안내 direction은 next, previous 또는 play입니다.
+관리자 권한 변경 시 user_id는 사용자가 메시지에 직접 쓴 UUID만 그대로 넣고 없으면 빈 문자열로 두세요.
+비밀번호나 인증정보를 요청하지 말고 로그인이나 가입은 해당 화면으로 안내하세요.
 공공데이터 검색 결과를 아직 받은 적이 없으므로 주차장 이름, 주소, 거리, 이용 가능 여부를 만들어내지 마세요.
 reply에는 친절하고 짧은 한국어 답변을 담고, search일 때는 검색 예정이라는 간단한 말만 적으세요.
 정확한 정보는 공공데이터를 통해 조회되며 실시간 잔여 공간은 확인할 수 없습니다."""
 SCHEMA = {
     "type": "object",
     "properties": {
-        "action": {"type": "string", "enum": ["search", "reply"]},
+        "action": {"type": "string", "enum": ["search", "reply", "favorite_add", "favorite_remove", "favorite_view", "save_preferences", "theme", "navigate", "logout", "admin_grant", "admin_revoke", "map_select", "map_zoom", "guide", "open_source"]},
         "reply": {"type": "string"},
         "location": {"type": "string"},
         "place_type": {"type": "string", "enum": ["all", "off_street", "on_street"]},
+        "number": {"type": "integer"},
+        "target_name": {"type": "string"},
+        "theme": {"type": "string", "enum": ["dark", "light", ""]},
+        "page": {"type": "string", "enum": ["home", "login", "signup", "admin", ""]},
+        "user_id": {"type": "string"},
+        "direction": {"type": "string", "enum": ["in", "out", "next", "previous", "play", ""]},
     },
     "required": ["action", "reply", "location", "place_type"],
 }
@@ -35,14 +54,15 @@ def configured():
     return bool(setting("GEMINI_API_KEY")) and setting("GEMINI_FREE_TIER_CONFIRMED").lower() == "true"
 
 
-def respond(message, history):
+def respond(message, history, places=None):
     if not configured():
         raise AssistantError("AI 서비스가 아직 설정되지 않았습니다. 관리자에게 문의해 주세요.")
     contents = []
     for entry in history[-6:]:
         if isinstance(entry, dict) and entry.get("role") in ("user", "model") and isinstance(entry.get("text"), str):
             contents.append({"role": entry["role"], "parts": [{"text": entry["text"][:500]}]})
-    contents.append({"role": "user", "parts": [{"text": message}]})
+    current = [{"number": i + 1, "name": p.get("name", ""), "area": p.get("area", "")} for i, p in enumerate((places or [])[:30])]
+    contents.append({"role": "user", "parts": [{"text": json.dumps({"message": message, "current_search_results": current}, ensure_ascii=False)}]})
     payload = {
         "systemInstruction": {"parts": [{"text": SYSTEM}]},
         "contents": contents,
@@ -62,12 +82,20 @@ def respond(message, history):
         answer = json.loads(raw)
         action, reply = answer["action"], answer["reply"]
         location, kind = answer["location"], answer["place_type"]
-        if (action not in ("search", "reply") or not isinstance(reply, str) or not reply.strip()
+        if (action not in ("search", "reply", "favorite_add", "favorite_remove", "favorite_view", "save_preferences", "theme", "navigate", "logout", "admin_grant", "admin_revoke", "map_select", "map_zoom", "guide", "open_source") or not isinstance(reply, str) or not reply.strip()
                 or not isinstance(location, str) or len(location.strip()) > 100
                 or kind not in ("all", "off_street", "on_street")
                 or (action == "search" and not location.strip())):
             raise ValueError("Invalid model response")
-        return {"action": action, "reply": reply.strip()[:500], "location": location.strip(), "place_type": kind}
+        result = {"action": action, "reply": reply.strip()[:500], "location": location.strip(), "place_type": kind}
+        if action not in ("search", "reply"):
+            number = answer.get("number", 0)
+            if type(number) is not int or not 0 <= number <= 200:
+                raise ValueError("Invalid selection")
+            result.update(number=number, target_name=answer.get("target_name", ""), theme=answer.get("theme", ""), page=answer.get("page", ""), user_id=answer.get("user_id", ""), direction=answer.get("direction", ""))
+            if any(not isinstance(result[key], str) or len(result[key]) > 200 for key in ("target_name", "theme", "page", "user_id", "direction")):
+                raise ValueError("Invalid action arguments")
+        return result
     except HTTPError as error:
         if error.code == 429:
             raise AssistantError("AI 무료 사용 한도에 도달했거나 요청이 많습니다. 잠시 후 다시 시도해 주세요.") from None
