@@ -50,10 +50,10 @@
     <tbody>{% for item in favorite_ranking %}<tr><td>{{ loop.index }}</td><td>{{ item.name }}</td><td>{{ item.area }}</td><td>{{ item.count }}</td><td>{{ item.latest }}</td></tr>{% else %}<tr><td colspan="5">즐겨찾기 기록이 없습니다.</td></tr>{% endfor %}</tbody>
   </table></div>
   <h2>자동 보안 분석</h2>
-  <p>최근 활동 기록에서 반복 실패·거부와 과도한 외부 조회를 검사합니다. 알림은 확인이 필요한 신호이며 공격 여부를 확정하지 않습니다.</p>
+  <p>최근 활동 기록의 반복 실패·거부, 과도한 외부 조회와 AI 안전 필터가 차단한 챗봇 입력을 확인합니다. 차단 내용은 이메일·전화번호를 가리고 최대 160자로 표시합니다. 알림은 확인이 필요한 신호이며 공격 여부를 확정하지 않습니다.</p>
   <div class="wrap"><table>
-    <thead><tr><th>기록 시각 (UTC)</th><th>감지 시각 (UTC)</th><th>수준</th><th>계정 별칭</th><th>분석 내용</th></tr></thead>
-    <tbody>{% for report in security_reports %}<tr><td>{{ report.recorded_at }}</td><td>{{ report.observed_at }}</td><td>{{ '높음' if report.severity == 'high' else '확인 필요' }}</td><td>{{ report.actor_alias }}</td><td>{{ report.summary }}</td></tr>{% else %}<tr><td colspan="5">현재 감지된 항목이 없습니다.</td></tr>{% endfor %}</tbody>
+    <thead><tr><th>기록 시각 (UTC)</th><th>감지 시각 (UTC)</th><th>수준</th><th>계정 별칭</th><th>분석 내용</th><th>차단된 내용 발췌</th></tr></thead>
+    <tbody>{% for report in security_reports %}<tr><td>{{ report.recorded_at }}</td><td>{{ report.observed_at }}</td><td>{{ '높음' if report.severity == 'high' else '확인 필요' }}</td><td>{{ report.actor_alias }}</td><td>{{ report.summary }}</td><td>{{ report.content_excerpt or '—' }}</td></tr>{% else %}<tr><td colspan="6">현재 감지된 항목이 없습니다.</td></tr>{% endfor %}</tbody>
   </table></div>
   <h1>활동 기록</h1><p>최근 100건</p>
   <div class="wrap"><table>

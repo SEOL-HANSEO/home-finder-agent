@@ -53,6 +53,10 @@ class AssistantError(Exception):
     pass
 
 
+class SafetyBlockedError(AssistantError):
+    """The model's safety filters explicitly blocked a chatbot input."""
+
+
 def configured():
     # This is an operator attestation, not a technical check of Google's billing tier.
     return bool(setting("GEMINI_API_KEY")) and setting("GEMINI_FREE_TIER_CONFIRMED").lower() == "true"
@@ -78,8 +82,13 @@ def respond(message, history, places=None, authenticated=False):
     try:
         with urlopen(req, timeout=25) as response:
             data = json.load(response)
+        block_reason = (data.get("promptFeedback") or {}).get("blockReason")
+        if block_reason:
+            raise SafetyBlockedError("AI 안전 필터가 요청을 차단했습니다.")
         candidate = data["candidates"][0]
         if candidate.get("finishReason") != "STOP":
+            if candidate.get("finishReason") in ("SAFETY", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII"):
+                raise SafetyBlockedError("AI 안전 필터가 요청을 차단했습니다.")
             raise ValueError("Incomplete model response")
         parts = candidate["content"]["parts"]
         raw = "".join(part.get("text", "") for part in parts if not part.get("thought"))
@@ -108,6 +117,8 @@ def respond(message, history, places=None, authenticated=False):
             if any(not isinstance(result[key], str) or len(result[key]) > 254 for key in ("target_name", "theme", "page", "user_id", "email", "direction")):
                 raise ValueError("Invalid action arguments")
         return result
+    except SafetyBlockedError:
+        raise
     except HTTPError as error:
         if error.code == 429:
             raise AssistantError("AI 무료 사용 한도에 도달했거나 요청이 많습니다. 잠시 후 다시 시도해 주세요.") from None

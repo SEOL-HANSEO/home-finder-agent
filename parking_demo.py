@@ -6,6 +6,7 @@ import ipaddress
 import json
 import os
 import re
+from datetime import datetime, timezone
 from uuid import UUID
 from flask import Blueprint, abort, current_app, jsonify, redirect, render_template, request, session, url_for
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
@@ -435,7 +436,7 @@ def admin():
                            body=finding, prefer="resolution=ignore-duplicates,return=minimal")
             except store.SupabaseError:
                 current_app.logger.warning("보안 분석 기록 저장에 실패했습니다.")
-        security_reports = store.call("/rest/v1/parking_security_reports?select=recorded_at,observed_at,actor_alias,severity,rule,summary&order=recorded_at.desc&limit=50", admin=True)
+        security_reports = store.call("/rest/v1/parking_security_reports?select=recorded_at,observed_at,actor_alias,severity,rule,summary,content_excerpt&order=recorded_at.desc&limit=50", admin=True)
         changes = store.call("/rest/v1/parking_admin_activity?select=occurred_at,actor_id,parking_lot_id,operation&order=occurred_at.desc&limit=100", token=token)
         favorite_records = store.call("/rest/v1/parking_favorites?select=name,area,created_at&order=created_at.desc&limit=1000", admin=True)
         favorite_totals = {}
@@ -484,6 +485,15 @@ def assistant():
         if not user:
             context_places = context_places[:5]
         answer = ai_assistant.respond(message, history, context_places, authenticated=bool(user))
+    except ai_assistant.SafetyBlockedError as error:
+        actor = str(user["id"])[:8] if user else "guest"
+        finding = security_agent.chat_safety_finding(actor, message, datetime.now(timezone.utc))
+        try:
+            store.call("/rest/v1/parking_security_reports?on_conflict=fingerprint", method="POST", admin=True,
+                       body=finding, prefer="resolution=ignore-duplicates,return=minimal")
+        except store.SupabaseError:
+            current_app.logger.warning("챗봇 차단 보안 기록 저장에 실패했습니다.")
+        return jsonify(message="보안 필터가 이 메시지를 차단했습니다. 다른 표현으로 다시 요청해 주세요.", remaining=remaining)
     except ai_assistant.AssistantError as error:
         return jsonify(message=str(error), remaining=remaining), 503
     if (answer["action"] == "favorite_add" and not context_places

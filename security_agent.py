@@ -2,6 +2,7 @@
 from collections import defaultdict
 from datetime import datetime, timezone
 import hashlib
+import re
 
 
 def _time(value):
@@ -49,5 +50,25 @@ def _finding(rule, actor, created, summary):
         "severity": "high" if rule == "expensive_search_failure" else "medium",
         "actor_alias": actor,
         "summary": summary,
+        "observed_at": created.isoformat(),
+    }
+
+
+def chat_safety_finding(actor, message, created):
+    """Build a privacy-trimmed report for text blocked by the model safety filter."""
+    excerpt = re.sub(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", "[이메일 가림]", message, flags=re.I)
+    excerpt = re.sub(r"(?<!\d)(?:\+?82[- .]?)?0?1\d[- .]?\d{3,4}[- .]?\d{4}(?!\d)", "[전화번호 가림]", excerpt)
+    excerpt = re.sub(r"(?i)(bearer\s+)[A-Za-z0-9._~+/-]+=*", r"\1[인증정보 가림]", excerpt)
+    excerpt = re.sub(r"\s+", " ", excerpt).strip()[:160]
+    bucket = int(created.timestamp()) // 900
+    digest = hashlib.sha256(message.encode("utf-8")).hexdigest()[:16]
+    fingerprint = hashlib.sha256(f"chat_safety_block:{actor}:{digest}:{bucket}".encode()).hexdigest()
+    return {
+        "fingerprint": fingerprint,
+        "rule": "chat_safety_block",
+        "severity": "medium",
+        "actor_alias": actor,
+        "summary": "AI 안전 필터가 챗봇 입력을 차단했습니다.",
+        "content_excerpt": excerpt,
         "observed_at": created.isoformat(),
     }
