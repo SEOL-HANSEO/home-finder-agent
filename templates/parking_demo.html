@@ -117,6 +117,8 @@
     .chat-form { display: flex; gap: 8px; margin-top: 16px; }
     .chat-form input { flex: 1; min-width: 0; }
     .chat-response { margin-top: 15px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .chat-turn { margin: 10px 0; padding: 12px; border-radius: 10px; background: #f1f8f4; }
+    [data-theme="dark"] .chat-turn { background: #25433a; }
     .chat-results { padding-left: 22px; }
     .user-id { overflow-wrap: anywhere; font-size: 12px; }
     [data-theme="dark"] .chat-box { background: #1a2b28; }
@@ -223,19 +225,19 @@
       <section class="map-shell" aria-label="주차장 지도"><div id="map"></div><p class="map-note" id="map-note">지도에서 위치를 확인하세요</p></section>
     </div>
     <section class="chat-box" aria-labelledby="chat-heading">
-      <h2 id="chat-heading">가까운 주차장 추천</h2>
-      <p>위치를 문장으로 알려주면 가까운 무료 주차장을 찾아드려요. 정해진 표현을 해석하는 기능으로, AI 모델은 사용하지 않습니다.</p>
+      <h2 id="chat-heading">AI 주차장 도우미</h2>
+      <p>위치나 원하는 조건을 편하게 말씀해 주세요. AI가 대화를 이해하고 공공데이터에서 가까운 무료 주차장을 찾아드려요.</p>
+      <p>대화 내용은 답변을 위해 Google Gemini로 전송되며 서비스 개선에 사용될 수 있습니다. 민감한 개인정보는 입력하지 마세요.</p>
       {% if alias %}
-      <p>관리자가 허용한 계정은 한국 시간 기준 하루 3회 이용할 수 있습니다. 검색을 시작하면 결과가 없거나 조회 오류가 나도 횟수가 차감됩니다.</p>
+      <p>관리자가 허용한 계정은 한국 시간 기준 하루 3회 메시지를 보낼 수 있습니다. 응답이나 검색에 오류가 나도 횟수가 차감됩니다.</p>
       <p class="user-id">내 사용자 ID: <code>{{ user_id }}</code> · 권한이 필요하면 관리자에게 이 ID를 알려주세요.</p>
       <form class="chat-form" id="chat-form" action="{{ url_for('parking_demo.assistant') }}" method="post">
         <input type="hidden" name="form_token" value="{{ form_token }}">
         <label for="chat-message" class="chat-label">위치</label>
-        <input id="chat-message" name="message" required maxlength="100" placeholder="예: 강남역 근처 무료 주차장">
-        <button type="submit" class="primary">추천받기</button>
+        <input id="chat-message" name="message" required maxlength="500" placeholder="예: 강남역 근처 노외 주차장을 찾아줘">
+        <button type="submit" class="primary">보내기</button>
       </form>
       <div id="chat-response" class="chat-response" role="status" aria-live="polite"></div>
-      <ol id="chat-results" class="chat-results"></ol>
       {% else %}
       <p><a href="{{ url_for('parking_demo.account', mode='login') }}">로그인</a> 후 관리자에게 이용 권한을 요청해 주세요.</p>
       {% endif %}
@@ -277,25 +279,36 @@
     const form = document.getElementById('chat-form');
     if (!form) return;
     const response = document.getElementById('chat-response');
-    const results = document.getElementById('chat-results');
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       const button = form.querySelector('button');
+      const input = document.getElementById('chat-message');
+      const body = new FormData(form);
+      const userTurn = document.createElement('div');
+      userTurn.className = 'chat-turn';
+      userTurn.textContent = `나: ${input.value}`;
+      response.appendChild(userTurn);
+      const answer = document.createElement('div');
+      answer.className = 'chat-turn';
+      answer.textContent = 'AI: 답변을 준비하고 있어요…';
+      response.appendChild(answer);
       button.disabled = true;
-      response.textContent = '주차장을 찾고 있어요…';
-      results.replaceChildren();
       try {
-        const res = await fetch(form.action, {method: 'POST', body: new FormData(form)});
+        const res = await fetch(form.action, {method: 'POST', body});
         const data = await res.json().catch(() => ({}));
-        response.textContent = data.message || (res.status === 429 ? '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' : '요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.');
-        if (Number.isInteger(data.remaining)) response.textContent += `\n오늘 남은 횟수: ${data.remaining}회`;
+        answer.textContent = 'AI: ' + (data.message || (res.status === 429 ? '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' : '요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.'));
+        if (Number.isInteger(data.remaining)) answer.textContent += `\n오늘 남은 횟수: ${data.remaining}회`;
+        const results = document.createElement('ol');
+        results.className = 'chat-results';
         (data.places || []).forEach((place) => {
           const item = document.createElement('li');
           item.textContent = `${place.name} · ${place.distance_km}km · ${place.area}`;
           results.appendChild(item);
         });
+        if (results.children.length) answer.appendChild(results);
+        if (res.ok) input.value = '';
       } catch (error) {
-        response.textContent = '서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+        answer.textContent = 'AI: 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.';
       } finally { button.disabled = false; }
     });
   })();

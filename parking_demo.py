@@ -3,7 +3,7 @@ import secrets
 from uuid import UUID
 from flask import Blueprint, abort, jsonify, redirect, render_template, request, session, url_for
 
-from chat_helper import parse_request
+import ai_assistant
 from nearby import nearby_parking
 from parking_provider import ParkingProviderError, provider_calls
 from rate_limit import check_rate_limit
@@ -193,9 +193,11 @@ def assistant():
     user = current_user()
     if not user:
         return jsonify(message="로그인 후 사용할 수 있어요."), 401
-    parsed = parse_request(request.form.get("message", ""))
-    if not parsed:
-        return jsonify(message="위치나 주소를 알려주세요. 예: 강남역 근처 무료 주차장"), 400
+    message = request.form.get("message", "").strip()
+    if not message or len(message) > 500:
+        return jsonify(message="메시지를 1자 이상 500자 이하로 입력해 주세요."), 400
+    if not ai_assistant.configured():
+        return jsonify(message="AI 서비스가 아직 설정되지 않았습니다. 관리자에게 문의해 주세요."), 503
     check_rate_limit("search", per_session=5, total=30)
     try:
         remaining = store.call("/rest/v1/rpc/parking_use_chat", method="POST", admin=True,
@@ -206,7 +208,16 @@ def assistant():
         return jsonify(message="이용 권한을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요."), 503
     if remaining < 0:
         return jsonify(message="이용 권한이 없거나 오늘의 3회 이용 한도를 모두 사용했어요. 관리자에게 문의하거나 내일 다시 이용해 주세요."), 403
-    location, kind = parsed
+    try:
+        history = session.get("assistant_history", [])
+        answer = ai_assistant.respond(message, history)
+    except ai_assistant.AssistantError as error:
+        return jsonify(message=str(error), remaining=remaining), 503
+    if answer["action"] == "reply":
+        session["assistant_history"] = (history + [{"role": "user", "text": message},
+                                        {"role": "model", "text": answer["reply"]}])[-6:]
+        return jsonify(message=answer["reply"], places=[], remaining=remaining)
+    location, kind = answer["location"], answer["place_type"]
     provider_calls.set(0)
     try:
         places, _ = nearby_parking(location, kind, limit=3)
@@ -215,5 +226,9 @@ def assistant():
         store.record(user["id"] if user else None, "search", "failure", calls=provider_calls.get())
         return jsonify(message=str(error), remaining=remaining), 503
     if not places:
-        return jsonify(message=f"'{location}'에서 3km 이내에 조건에 맞는 무료 주차장을 찾지 못했어요. 다른 위치나 유형으로 검색해 보세요.", places=[], remaining=remaining)
-    return jsonify(message=f"'{location}'에서 가까운 무료 주차장이에요. 직선거리 기준이며 실제 이용 가능 여부는 현장에서 확인해 주세요.", places=places, remaining=remaining)
+        reply = f"'{location}'에서 3km 이내에 조건에 맞는 무료 주차장을 찾지 못했어요. 다른 위치나 유형으로 검색해 보세요."
+    else:
+        reply = f"'{location}'에서 가까운 무료 주차장이에요. 직선거리 기준이며 실제 이용 가능 여부는 현장에서 확인해 주세요."
+    session["assistant_history"] = (history + [{"role": "user", "text": message},
+                                    {"role": "model", "text": reply}])[-6:]
+    return jsonify(message=reply, places=places, remaining=remaining)

@@ -24,6 +24,9 @@ class AssistantTests(unittest.TestCase):
         app.register_blueprint(parking_demo)
         app.testing = True
         self.client = app.test_client()
+        configured = patch("parking_demo.ai_assistant.configured", return_value=True)
+        configured.start()
+        self.addCleanup(configured.stop)
         with self.client.session_transaction() as session:
             session["parking_form_token"] = "test-token"
 
@@ -50,9 +53,10 @@ class AssistantTests(unittest.TestCase):
 
     @patch("parking_demo.store.record")
     @patch("parking_demo.nearby_parking", return_value=([{"name": "주차장", "area": "주소", "distance_km": 0.1}], (37, 127)))
+    @patch("parking_demo.ai_assistant.respond", return_value={"action": "search", "reply": "검색할게요", "location": "강남역", "place_type": "off_street"})
     @patch("parking_demo.store.get_user", return_value=USER)
     @patch("parking_demo.store.call", return_value=2)
-    def test_success_consumes_quota_and_returns_nearest(self, call, get_user, nearby, record):
+    def test_success_consumes_quota_and_returns_nearest(self, call, get_user, ai, nearby, record):
         self.login()
         result = self.request_chat()
         self.assertEqual(result.status_code, 200)
@@ -63,9 +67,10 @@ class AssistantTests(unittest.TestCase):
 
     @patch("parking_demo.store.record")
     @patch("parking_demo.nearby_parking", side_effect=ParkingProviderError("조회 실패"))
+    @patch("parking_demo.ai_assistant.respond", return_value={"action": "search", "reply": "검색할게요", "location": "강남역", "place_type": "all"})
     @patch("parking_demo.store.get_user", return_value=USER)
     @patch("parking_demo.store.call", return_value=1)
-    def test_provider_failure_shows_remaining(self, call, get_user, nearby, record):
+    def test_provider_failure_shows_remaining(self, call, get_user, ai, nearby, record):
         self.login()
         result = self.request_chat()
         self.assertEqual((result.status_code, result.json["remaining"]), (503, 1))
@@ -74,7 +79,24 @@ class AssistantTests(unittest.TestCase):
     @patch("parking_demo.store.call")
     def test_invalid_input_does_not_consume_quota(self, call, get_user):
         self.login()
-        self.assertEqual(self.request_chat("안녕").status_code, 400)
+        self.assertEqual(self.request_chat(" ").status_code, 400)
+        call.assert_not_called()
+
+    @patch("parking_demo.ai_assistant.respond", return_value={"action": "reply", "reply": "어느 지역을 찾아드릴까요?", "location": "", "place_type": "all"})
+    @patch("parking_demo.store.get_user", return_value=USER)
+    @patch("parking_demo.store.call", return_value=2)
+    def test_followup_uses_conversation_history(self, call, get_user, ai):
+        self.login()
+        self.assertEqual(self.request_chat("주차장 찾아줘").status_code, 200)
+        self.assertEqual(self.request_chat("서울이요").status_code, 200)
+        self.assertEqual(ai.call_args.args[1][0]["text"], "주차장 찾아줘")
+
+    @patch("parking_demo.ai_assistant.configured", return_value=False)
+    @patch("parking_demo.store.get_user", return_value=USER)
+    @patch("parking_demo.store.call")
+    def test_missing_ai_config_does_not_consume_quota(self, call, get_user, configured):
+        self.login()
+        self.assertEqual(self.request_chat().status_code, 503)
         call.assert_not_called()
 
     @patch("parking_demo.store.is_admin", return_value=False)
