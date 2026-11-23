@@ -13,6 +13,10 @@
   .parking-chat .chat-bubble { max-width: 92%; margin: 0 0 10px; padding: 11px 13px; border-radius: 14px; white-space: pre-wrap; overflow-wrap: anywhere; background: #fff; color: #25443a; border: 1px solid #e2ebe4; }
   .parking-chat .chat-bubble.user { margin-left: auto; background: #dceee1; border-color: #dceee1; }
   .parking-chat .chat-bubble small { display: block; color: #587466; margin-top: 6px; }
+  .parking-chat .chat-loading { display: flex; align-items: center; gap: 9px; width: fit-content; color: #587466; }
+  .parking-chat .chat-spinner { width: 16px; height: 16px; border: 2px solid #d4e4d8; border-top-color: #1a6847; border-radius: 50%; animation: chat-spin .8s linear infinite; }
+  @keyframes chat-spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .parking-chat .chat-spinner { animation-duration: 2s; } }
   .parking-chat .chat-disclosure { margin: 0; padding: 8px 16px 0; color: #5e766b; font-size: 11px; }
   .parking-chat .chat-compose { display: flex; gap: 8px; padding: 12px; }
   .parking-chat .chat-compose input { flex: 1; min-width: 0; width: auto; height: 42px; padding: 0 12px; border: 1px solid #cadcd0; border-radius: 10px; background: #fff; color: #17392a; font: inherit; }
@@ -66,13 +70,27 @@
     log.scrollTop = log.scrollHeight;
     save();
   }
+  function showLoading() {
+    const indicator = document.createElement('div');
+    indicator.className = 'chat-bubble chat-loading';
+    indicator.setAttribute('role', 'status');
+    indicator.setAttribute('aria-label', 'AI가 답변을 준비하고 있습니다');
+    const spinner = document.createElement('span'); spinner.className = 'chat-spinner'; spinner.setAttribute('aria-hidden', 'true');
+    const label = document.createElement('span'); label.textContent = 'AI가 답변을 준비하고 있어요…';
+    indicator.append(spinner, label);
+    log.appendChild(indicator);
+    log.scrollTop = log.scrollHeight;
+    return indicator;
+  }
   launch.addEventListener('click', () => { state.open = !state.open; render(); if (state.open) form.elements.message.focus(); });
   close.addEventListener('click', () => { state.open = false; render(); launch.focus(); });
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && state.open) { state.open = false; render(); launch.focus(); } });
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const button = form.querySelector('button'); const input = form.elements.message; const body = new FormData(form);
-    state.messages.push({role: 'user', text: input.value}); state.messages = state.messages.slice(-16); input.value = ''; button.disabled = true; render();
+    const originalButtonText = button.textContent;
+    state.messages.push({role: 'user', text: input.value}); state.messages = state.messages.slice(-16); input.value = ''; button.disabled = true; button.textContent = '응답 중…'; render();
+    const loading = showLoading();
     try {
       const response = await fetch(form.action, {method: 'POST', body});
       const data = await response.json().catch(() => ({}));
@@ -107,7 +125,7 @@
       if (data.admin_changed && window.location.pathname === {{ url_for('parking_demo.admin') | tojson }}) data.navigate = {{ url_for('parking_demo.admin') | tojson }};
       if (data.navigate) { state.messages = state.messages.slice(-16); save(); window.location.assign(data.navigate); }
     } catch (_) { state.messages.push({role: 'assistant', text: '서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.'}); }
-    finally { state.messages = state.messages.slice(-16); button.disabled = false; render(); }
+    finally { loading.remove(); state.messages = state.messages.slice(-16); button.disabled = false; button.textContent = originalButtonText; render(); }
   });
   window.addEventListener('DOMContentLoaded', () => {
     if (!document.getElementById('results-body')) return;
