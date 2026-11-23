@@ -28,7 +28,7 @@ on conflict do nothing;
 
 브라우저에서 http://127.0.0.1:5000 을 엽니다. 가상환경이 없으면 `python3 -m venv ../.venv`와 `../.venv/bin/python -m pip install -r requirements.txt`를 실행합니다.
 
-위치는 OpenStreetMap Nominatim으로 검색하고, 서비스 장애 시 Photon을 대체 사용합니다. 카카오 지도 JavaScript SDK 키를 `KAKAO_MAP_JAVASCRIPT_KEY` 환경 변수에 설정하면 검색 결과 지도와 챗봇 지도 조작에 카카오맵을 사용합니다. 키가 없으면 OpenStreetMap 지도를 표시합니다. 카카오 개발자 콘솔의 JavaScript SDK 도메인에 서비스 주소를 등록해야 합니다. 주차장 데이터는 실시간 빈자리 정보가 아니며 데이터 기준일과 실제 현장 상황이 다를 수 있습니다.
+위치는 OpenStreetMap Nominatim으로 먼저 검색하고, 결과가 없거나 장애가 발생하면 Photon을 대체 사용합니다. 두 공개 주소 검색 서비스가 모두 응답하지 않으면 위치 오류를 표시하므로 잠시 후 다시 시도하거나 동네·주소를 더 자세히 입력해 주세요. 카카오 지도 JavaScript SDK 키를 `KAKAO_MAP_JAVASCRIPT_KEY` 환경 변수에 설정하면 검색 결과 지도와 챗봇 지도 조작에 카카오맵을 사용합니다. 키가 없으면 OpenStreetMap 지도를 표시합니다. 카카오 개발자 콘솔의 JavaScript SDK 도메인에 서비스 주소를 등록해야 합니다. 주차장 데이터는 실시간 빈자리 정보가 아니며 데이터 기준일과 실제 현장 상황이 다를 수 있습니다.
 
 ## 주차장 즐겨찾기
 
