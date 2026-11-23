@@ -428,7 +428,7 @@ def admin():
             if not error:
                 set_administrator(user, token, target, action == "grant_admin")
                 return redirect(url_for(".admin", updated="1"), code=303)
-        logs = store.call("/rest/v1/parking_audit?select=created_at,actor_alias,action,outcome,result_count,provider_calls&order=created_at.desc&limit=100", token=token)
+        logs = store.call("/rest/v1/parking_audit?select=id,created_at,actor_alias,action,outcome,result_count,provider_calls&order=created_at.desc&limit=100", token=token)
         findings = security_agent.analyze(logs)
         for finding in findings:
             try:
@@ -452,10 +452,13 @@ def admin():
             "failure": sum(1 for item in logs if item.get("action") == "search" and item.get("outcome") == "failure"),
         }
         admins = store.call("/rest/v1/parking_admins?select=user_id&order=user_id.asc", token=token) if owner else []
-        report = session.get("admin_ai_report") or {}
-        report_run = session.get("admin_ai_report_run") or {}
+        runs = store.call("/rest/v1/parking_ai_report_runs?select=*&order=created_at.desc&limit=1", admin=True)
+        successes = store.call("/rest/v1/parking_ai_report_runs?select=*&status=eq.success&order=created_at.desc&limit=1", admin=True)
+        report_run = runs[0] if runs else {}
+        report = successes[0] if successes else {}
         now = datetime.now(timezone.utc)
-        if logs and (now.timestamp() - report_run.get("timestamp", 0) >= 3600):
+        last_run = security_agent._time(report_run.get("created_at"))
+        if last_run is None or (now - last_run).total_seconds() >= 3600:
             stats = {"activity_records": len(logs), "search_success": search_summary["success"],
                      "search_failure": search_summary["failure"], "favorite_records": len(favorite_records),
                      "favorite_places_in_top_list": len(favorite_ranking), "security_reports": len(security_reports),
@@ -463,18 +466,19 @@ def admin():
                      "chat_safety_blocks": sum(1 for item in security_reports if item.get("rule") == "chat_safety_block"),
                      "parking_changes": len(changes), "activity_limit": 100, "security_limit": 50,
                      "favorite_limit": 1000, "change_limit": 100}
-            try:
-                if consume_ai_quota(user) < 0:
-                    raise ai_assistant.AssistantError("AI 이용 한도에 도달했습니다.")
-                report = {"text": ai_assistant.admin_report(stats), "timestamp": now.timestamp(),
-                          "created_at": now.strftime("%Y-%m-%d %H:%M UTC")}
-                session["admin_ai_report"] = report
-                report_run = {"status": "성공", "timestamp": now.timestamp(), "created_at": report["created_at"], "reason": ""}
-            except (ai_assistant.AssistantError, store.SupabaseError) as error:
-                report_run = {"status": "실패", "timestamp": now.timestamp(),
-                              "created_at": now.strftime("%Y-%m-%d %H:%M UTC"),
-                              "reason": str(error) if isinstance(error, ai_assistant.AssistantError) else "이용 한도 확인에 실패했습니다."}
-            session["admin_ai_report_run"] = report_run
+            run = {"status": "empty", "reason": "분석할 활동 기록이 없습니다."}
+            if logs:
+                try:
+                    if consume_ai_quota(user) < 0:
+                        raise ai_assistant.AssistantError("AI 이용 한도에 도달했습니다.")
+                    run = {"status": "success", "reason": "", "report_text": ai_assistant.admin_report(stats),
+                           "stats": stats, "evidence_audit_id": logs[0].get("id")}
+                except (ai_assistant.AssistantError, store.SupabaseError) as error:
+                    run = {"status": "failure", "reason": str(error) if isinstance(error, ai_assistant.AssistantError) else "이용 한도 확인에 실패했습니다."}
+            saved = store.call("/rest/v1/parking_ai_report_runs?select=*", method="POST", admin=True, body=run, prefer="return=representation")
+            report_run = saved[0] if saved else {"status": "failure", "reason": "실행 기록을 저장하지 못했습니다.", "created_at": now.isoformat()}
+            if report_run["status"] == "success":
+                report = report_run
     except store.SupabaseError:
         abort(503, "기록을 불러오지 못했습니다.")
     return render_template("admin.html", logs=logs, changes=changes, error=error,
@@ -482,6 +486,23 @@ def admin():
                            security_reports=security_reports, admin_ai_report=report, admin_ai_report_run=report_run,
                            form_token=form_token(), updated=request.args.get("updated") == "1",
                            owner=owner, admins=admins, owner_id=user["id"]), status
+
+
+@parking_demo.get("/admin/audit/<int:audit_id>")
+def audit_detail(audit_id):
+    user = current_user()
+    if not user:
+        abort(401)
+    token = session["access_token"]
+    try:
+        if not store.is_admin(token):
+            abort(403)
+        rows = store.call(f"/rest/v1/parking_audit?id=eq.{audit_id}&select=id,created_at,actor_alias,action,outcome,result_count,provider_calls&limit=1", token=token)
+    except store.SupabaseError:
+        abort(503, "기록을 불러오지 못했습니다.")
+    if not rows:
+        abort(404, "원본 기록을 찾을 수 없습니다.")
+    return render_template("audit_detail.html", log=rows[0])
 
 
 @parking_demo.post("/assistant")

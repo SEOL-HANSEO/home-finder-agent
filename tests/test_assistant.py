@@ -263,6 +263,25 @@ class AssistantTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'id="floating-chat-form"', response.data)
 
+    @patch("parking_demo.store.is_admin", return_value=True)
+    @patch("parking_demo.store.get_user", return_value=USER)
+    @patch("parking_demo.store.call")
+    def test_empty_run_keeps_last_success_and_original_record_link(self, call, get_user, is_admin):
+        self.login()
+        def api(path, **kwargs):
+            if "parking_ai_report_runs" in path:
+                if kwargs.get("method") == "POST":
+                    return [{"status": "empty", "reason": "분석할 활동 기록이 없습니다.", "created_at": "2026-01-01T00:00:00Z"}]
+                if "status=eq.success" in path:
+                    return [{"status": "success", "report_text": "이전 보고서", "created_at": "2025-01-01T00:00:00Z", "stats": {"activity_records": 3}, "evidence_audit_id": 42}]
+            return []
+        call.side_effect = api
+        response = self.client.get("/admin")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("이전 보고서".encode(), response.data)
+        self.assertIn("자료 없음".encode(), response.data)
+        self.assertIn(b"/admin/audit/42", response.data)
+
     @patch("parking_demo.add_favorite", return_value={"place_key": "a" * 64, "result": "added"})
     @patch("parking_demo.ai_assistant.respond", return_value={"action": "favorite_add", "number": 1, "target_name": ""})
     @patch("parking_demo.store.get_user", return_value=USER)
