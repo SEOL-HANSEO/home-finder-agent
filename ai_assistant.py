@@ -11,6 +11,7 @@ SYSTEM = """당신은 한국의 무료 주차장 검색을 돕는 친절한 대�
 사용자가 목적지를 알려주고 검색을 원하면 action을 search로, 검색할 실제 지역이나 주소를 location에,
 원하는 유형을 place_type에 담으세요. 검색 위치가 모호하면 먼저 구체적인 위치를 질문하세요.
 사용자가 대화를 이어가면 이전 문맥과 현재 검색 결과를 활용하세요.
+한 문장에 주차장 검색과 즐겨찾기 추가가 함께 요청되면 action은 search로 하고 favorite_after_search를 true로 설정하세요. 검색을 마친 뒤 검색 결과 중 요청한 주차장을 찜합니다. 검색만 요청했으면 false로 설정하세요.
 주차장 검색이면 search, 검색 결과를 즐겨찾기에 추가하면 favorite_add, 저장한 즐겨찾기를 지우면 favorite_remove,
 기본 검색 설정을 저장하면 save_preferences, 화면 모드 변경이면 theme, 화면 이동이면 navigate,
 로그아웃이면 logout, 관리자 권한 부여/해제면 admin_grant/admin_revoke를 선택하세요.
@@ -35,6 +36,7 @@ SCHEMA = {
         "reply": {"type": "string"},
         "location": {"type": "string"},
         "place_type": {"type": "string", "enum": ["all", "off_street", "on_street"]},
+        "favorite_after_search": {"type": "boolean"},
         "number": {"type": "integer"},
         "target_name": {"type": "string"},
         "theme": {"type": "string", "enum": ["dark", "light", ""]},
@@ -43,7 +45,7 @@ SCHEMA = {
         "email": {"type": "string"},
         "direction": {"type": "string", "enum": ["in", "out", "next", "previous", "play", ""]},
     },
-    "required": ["action", "reply", "location", "place_type"],
+    "required": ["action", "reply", "location", "place_type", "favorite_after_search"],
 }
 
 
@@ -84,12 +86,21 @@ def respond(message, history, places=None, authenticated=False):
         answer = json.loads(raw)
         action, reply = answer["action"], answer["reply"]
         location, kind = answer["location"], answer["place_type"]
+        favorite_after_search = answer.get("favorite_after_search", False)
         if (action not in ("search", "reply", "favorite_add", "favorite_remove", "favorite_view", "save_preferences", "theme", "navigate", "logout", "admin_grant", "admin_revoke", "map_select", "map_zoom", "guide", "open_source") or not isinstance(reply, str) or not reply.strip()
                 or not isinstance(location, str) or len(location.strip()) > 100
                 or kind not in ("all", "off_street", "on_street")
+                or not isinstance(favorite_after_search, bool)
                 or (action == "search" and not location.strip())):
             raise ValueError("Invalid model response")
-        result = {"action": action, "reply": reply.strip()[:500], "location": location.strip(), "place_type": kind}
+        result = {"action": action, "reply": reply.strip()[:500], "location": location.strip(), "place_type": kind,
+                  "favorite_after_search": favorite_after_search}
+        if action == "search" and favorite_after_search:
+            number = answer.get("number", 0)
+            target_name = answer.get("target_name", "")
+            if type(number) is not int or not 0 <= number <= 200 or not isinstance(target_name, str) or len(target_name) > 254:
+                raise ValueError("Invalid chained favorite selection")
+            result.update(number=number, target_name=target_name)
         if action not in ("search", "reply"):
             number = answer.get("number", 0)
             if type(number) is not int or not 0 <= number <= 200:

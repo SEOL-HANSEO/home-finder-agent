@@ -451,6 +451,12 @@ def assistant():
         answer = ai_assistant.respond(message, history, context_places, authenticated=bool(user))
     except ai_assistant.AssistantError as error:
         return jsonify(message=str(error), remaining=remaining), 503
+    if (answer["action"] == "favorite_add" and not context_places
+            and answer.get("location")):
+        # A combined find-and-save request can be classified as favorite_add even
+        # though the assistant has no current result list yet. Search first.
+        answer["action"] = "search"
+        answer["favorite_after_search"] = True
     if answer["action"] == "reply":
         session["assistant_history"] = (history + [{"role": "user", "text": message},
                                         {"role": "model", "text": answer["reply"]}])[-6:]
@@ -607,10 +613,30 @@ def assistant():
     except ParkingProviderError as error:
         store.record(user["id"] if user else None, "search", "failure", calls=provider_calls.get())
         return jsonify(message=str(error), remaining=remaining), 503
-    if not places:
+    extra = {}
+    favorite_requested = answer.get("favorite_after_search", False)
+    canceled = re.search(r"(하지\s*마|하지\s*말|말고|취소)", message)
+    if favorite_requested and places and not canceled:
+        place = select_place(places, answer.get("number", 0), answer.get("target_name", ""), default_first=True)
+        if not place:
+            reply = f"'{location}'에서 주차장을 찾았어요. 찜할 주차장 이름이나 번호를 알려주세요."
+        elif user:
+            favorite = {key: place[key] for key in ("name", "area", "lat", "lon")}
+            outcome = add_favorite(user, session["access_token"], favorite)
+            feedback = favorite_feedback(favorite, outcome)
+            reply = f"'{location}'에서 찾은 주차장을 찜했어요. {feedback['place_name']} · {feedback['result_label']}"
+            extra["favorites_changed"] = True
+            extra["favorite_feedback"] = feedback
+        else:
+            session["pending_favorite"] = {key: place[key] for key in ("name", "area", "lat", "lon")}
+            reply = f"'{location}'에서 찾은 {place['name']}을(를) 찜할게요. 로그인하면 자동으로 저장됩니다."
+            extra["navigate"] = url_for(".account", mode="login")
+    elif favorite_requested and canceled and places:
+        reply = f"'{location}'에서 주차장을 찾았어요. 요청하신 대로 즐겨찾기는 추가하지 않았습니다."
+    elif not places:
         reply = f"'{location}'에서 3km 이내에 조건에 맞는 무료 주차장을 찾지 못했어요. 다른 위치나 유형으로 검색해 보세요."
     else:
         reply = f"'{location}'에서 가까운 무료 주차장이에요. 직선거리 기준이며 실제 이용 가능 여부는 현장에서 확인해 주세요."
     session["assistant_history"] = (history + [{"role": "user", "text": message},
                                     {"role": "model", "text": reply}])[-6:]
-    return jsonify(message=reply, places=places[:3], remaining=remaining, search=client_search_view(view, user))
+    return jsonify(message=reply, places=places[:3], remaining=remaining, search=client_search_view(view, user), **extra)
