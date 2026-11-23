@@ -282,6 +282,39 @@ class AssistantTests(unittest.TestCase):
         self.assertIn("자료 없음".encode(), response.data)
         self.assertIn(b"/admin/audit/42", response.data)
 
+    @patch("parking_demo.store.is_admin", return_value=True)
+    @patch("parking_demo.store.get_user", return_value=USER)
+    @patch("parking_demo.consume_ai_quota", return_value=1)
+    @patch("parking_demo.ai_assistant.admin_report", return_value="보고서 초안")
+    @patch("parking_demo.store.call")
+    def test_review_pass_and_practice_mismatch(self, call, ai, quota, get_user, is_admin):
+        self.login()
+        for mismatch in (False, True):
+            saved = []
+            def api(path, **kwargs):
+                if "parking_ai_report_runs" in path:
+                    if kwargs.get("method") == "POST":
+                        saved.append(kwargs["body"])
+                        return [{**kwargs["body"], "created_at": "2026-01-01T00:00:00Z"}]
+                    if "status=eq.success" in path:
+                        return [{"status": "success", "report_text": "이전 성공 보고서", "created_at": "2025-01-01T00:00:00Z", "stats": {"activity_records": 1}, "evidence_audit_id": 7}]
+                    return []
+                if "parking_audit?select=id&id=in." in path:
+                    return [] if mismatch else [{"id": 7}]
+                if "parking_audit?select=id,created_at" in path:
+                    return [{"id": 7, "created_at": "2026-01-01T00:00:00Z", "action": "search", "outcome": "success", "actor_alias": "guest"}]
+                return []
+            call.side_effect = api
+            response = self.client.get("/admin")
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(saved[0]["status"], "failure" if mismatch else "success")
+            if mismatch:
+                self.assertIn("검토 실패 단계: 활동 기록 건수 초안 1건, 원본 재계산 0건".encode(), response.data)
+                self.assertIn("이전 성공 보고서".encode(), response.data)
+                self.assertNotIn("report_text", saved[0])
+            else:
+                self.assertIn("검토 통과".encode(), response.data)
+
     @patch("parking_demo.add_favorite", return_value={"place_key": "a" * 64, "result": "added"})
     @patch("parking_demo.ai_assistant.respond", return_value={"action": "favorite_add", "number": 1, "target_name": ""})
     @patch("parking_demo.store.get_user", return_value=USER)

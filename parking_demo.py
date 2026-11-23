@@ -22,6 +22,25 @@ parking_demo = Blueprint("parking_demo", __name__)
 PLACE_TYPES = {"all": "전체", "off_street": "노외 주차장", "on_street": "노상 주차장"}
 
 
+class ReportReviewError(Exception):
+    pass
+
+
+def review_activity_count(logs, draft_count, token):
+    """Re-read exactly the audit rows used by the draft, not the latest window."""
+    ids = [row.get("id") for row in logs]
+    if any(type(value) is not int or value <= 0 for value in ids) or len(set(ids)) != len(ids):
+        raise ReportReviewError("검토 실패 단계: 활동 기록의 식별자를 확인할 수 없습니다.")
+    try:
+        rows = store.call("/rest/v1/parking_audit?select=id&id=in.(" + ",".join(map(str, ids)) + ")", token=token) if ids else []
+    except store.SupabaseError:
+        raise ReportReviewError("검토 실패 단계: 원본 활동 기록을 다시 읽지 못했습니다.") from None
+    actual = len(rows)
+    if actual != draft_count:
+        raise ReportReviewError(f"검토 실패 단계: 활동 기록 건수 초안 {draft_count}건, 원본 재계산 {actual}건.")
+    return actual
+
+
 def place_serializer():
     return URLSafeTimedSerializer(current_app.secret_key, salt="parking-favorite")
 
@@ -471,10 +490,14 @@ def admin():
                 try:
                     if consume_ai_quota(user) < 0:
                         raise ai_assistant.AssistantError("AI 이용 한도에 도달했습니다.")
-                    run = {"status": "success", "reason": "", "report_text": ai_assistant.admin_report(stats),
+                    draft_text = ai_assistant.admin_report(stats)
+                    review_activity_count(logs, stats["activity_records"], token)
+                    run = {"status": "success", "reason": "검토 통과: 활동 기록 건수 일치", "report_text": draft_text,
                            "stats": stats, "evidence_audit_id": logs[0].get("id")}
-                except (ai_assistant.AssistantError, store.SupabaseError) as error:
-                    run = {"status": "failure", "reason": str(error) if isinstance(error, ai_assistant.AssistantError) else "이용 한도 확인에 실패했습니다."}
+                except ReportReviewError as review_error:
+                    run = {"status": "failure", "reason": str(review_error)}
+                except (ai_assistant.AssistantError, store.SupabaseError) as report_error:
+                    run = {"status": "failure", "reason": str(report_error) if isinstance(report_error, ai_assistant.AssistantError) else "이용 한도 확인에 실패했습니다."}
             saved = store.call("/rest/v1/parking_ai_report_runs?select=*", method="POST", admin=True, body=run, prefer="return=representation")
             report_run = saved[0] if saved else {"status": "failure", "reason": "실행 기록을 저장하지 못했습니다.", "created_at": now.isoformat()}
             if report_run["status"] == "success":
