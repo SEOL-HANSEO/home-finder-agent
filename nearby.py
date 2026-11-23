@@ -78,7 +78,7 @@ def _valid_coordinates(result):
     return math.isfinite(lat) and math.isfinite(lon) and 33 <= lat <= 39 and 124 <= lon <= 132
 
 
-def nearby_parking(location, place_type, limit=None):
+def nearby_parking(location, place_type, limit=None, radius_km=RADIUS_KM):
     latitude, longitude = geocode(location)
     matches = []
     for place in search_parking("", place_type):
@@ -89,7 +89,7 @@ def nearby_parking(location, place_type, limit=None):
         dlon = math.radians(place["lon"] - longitude)
         a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
         distance = 6371 * 2 * math.asin(math.sqrt(min(1, a)))
-        if distance <= RADIUS_KM:
+        if distance <= radius_km:
             place["distance_km"] = round(distance, 2)
             matches.append(place)
     matches.sort(key=lambda place: place["distance_km"])

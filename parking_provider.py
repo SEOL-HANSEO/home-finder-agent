@@ -86,6 +86,8 @@ def search_parking(location, place_type, limit=None):
                 "reference_date": str(item.get("referenceDate") or ""),
                 "provider": str(item.get("instt_nm") or ""),
                 "spaces": str(item.get("prkcmprt") or ""),
+                "weekday_start": str(item.get("weekdayOperOpenHhmm") or ""),
+                "weekday_end": str(item.get("weekdayOperColseHhmm") or ""),
             })
         if limit is not None and len(matches) >= limit:
             return matches[:limit]

@@ -43,6 +43,29 @@ class AssistantTests(unittest.TestCase):
     def request_chat(self, message="강남역 근처 노외 무료 주차장"):
         return self.client.post("/assistant", data={"form_token": "test-token", "message": message})
 
+    @patch("parking_demo.store.record")
+    @patch("parking_demo.add_favorite", return_value={"place_key": "a" * 64, "result": "added"})
+    @patch("parking_demo.nearby_parking", return_value=([{"name": "주차장", "area": "울산", "lat": 35.54, "lon": 129.31, "distance_km": 0.1}], (35.54, 129.31)))
+    @patch("parking_demo.ai_assistant.respond", return_value={"action": "search", "location": "울산", "place_type": "all", "favorite_after_search": True})
+    @patch("parking_demo.store.get_user", return_value=USER)
+    @patch("parking_demo.store.call", return_value=2)
+    def test_find_and_favorite_in_one_message(self, call, get_user, ai, nearby, add, record):
+        self.login()
+        response = self.request_chat("울산 주차장 찾아서 찜해줘")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["favorite_feedback"]["place_name"], "주차장")
+        self.assertEqual(response.json["search"]["radius"], 3)
+        add.assert_called_once()
+
+    @patch("parking_demo.store.record")
+    @patch("parking_demo.nearby_parking", return_value=([], (35.54, 129.31)))
+    def test_search_radius_is_saved_and_displayed(self, nearby, record):
+        response = self.client.post("/", data={"form_token": "test-token", "action": "search", "location": "울산", "place_type": "all", "radius": "5"})
+        self.assertEqual(response.status_code, 200)
+        nearby.assert_called_once_with("울산", "all", limit=5, radius_km=5)
+        with self.client.session_transaction() as session:
+            self.assertEqual(session["search_view"]["radius"], 5)
+
     @patch("parking_demo.ai_assistant.respond", return_value={"action": "reply", "reply": "안녕하세요", "location": "", "place_type": "all"})
     @patch("parking_demo.store.call", return_value=2)
     def test_guest_allowed_and_csrf_required(self, call, respond):

@@ -42,8 +42,12 @@ def favorite_place(token):
         abort(400, "검색 결과가 만료됐습니다. 다시 검색해 주세요.")
 
 
+def favorite_key(place):
+    return hashlib.sha256(json.dumps([place["name"], place["area"], place["lat"], place["lon"]], ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+
+
 def add_favorite(user, token, place):
-    key = hashlib.sha256(json.dumps([place["name"], place["area"], place["lat"], place["lon"]], ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+    key = favorite_key(place)
     inserted = store.call("/rest/v1/parking_favorites?on_conflict=user_id,place_key&select=place_key", method="POST", token=token,
                           body={"user_id": user["id"], "place_key": key, **place},
                           prefer="resolution=ignore-duplicates,return=representation")
@@ -124,6 +128,7 @@ def client_search_view(view, user):
         item = dict(place)
         if user and item.get("lat") is not None and item.get("lon") is not None:
             item["favorite_token"] = favorite_token(item)
+            item["favorite_key"] = favorite_key(item)
         result["places"].append(item)
     return result
 
@@ -289,11 +294,17 @@ def parking():
                 message, status = "설정을 저장하지 못했습니다.", 503
         else:
             values = (location, place_type)
+            radius = request.form.get("radius", "3")
+            if radius not in ("3", "5"):
+                abort(400)
             check_rate_limit("search", per_session=5, total=30)
             provider_calls.set(0)
             try:
-                results, center = nearby_parking(location, place_type, limit=None if user else 5)
-                session["search_view"] = search_view(location, place_type, center, results)
+                if radius == "3":
+                    results, center = nearby_parking(location, place_type, limit=None if user else 5)
+                else:
+                    results, center = nearby_parking(location, place_type, limit=None if user else 5, radius_km=5)
+                session["search_view"] = {**search_view(location, place_type, center, results), "radius": int(radius)}
                 store.record(user["id"] if user else None, "search", "success", len(results), provider_calls.get())
             except ParkingProviderError as error:
                 store.record(user["id"] if user else None, "search", "failure", calls=provider_calls.get())
@@ -303,7 +314,7 @@ def parking():
     return render_template("parking_demo.html", alias=user.get("email") if user else None,
                            user_id=user.get("id") if user else None,
                            admin=admin, values=values, place_types=PLACE_TYPES, results=results,
-                           center=center, message=message, form_token=form_token(), favorite_token=favorite_token,
+                           center=center, message=message, form_token=form_token(), favorite_token=favorite_token, favorite_key=favorite_key,
                            favorite_ai_configured=ai_assistant.configured(),
                            kakao_map_key=os.environ.get("KAKAO_MAP_JAVASCRIPT_KEY", "").strip(),
                            login_favorite_feedback=session.pop("login_favorite_feedback", None),
@@ -440,7 +451,7 @@ def assistant():
     except store.SupabaseError:
         return jsonify(message="이용 권한을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요."), 503
     if remaining < 0:
-        text = "오늘 전체 AI 이용 한도에 도달했어요. 내일 다시 이용해 주세요." if remaining == -2 else "오늘의 AI 이용 횟수를 모두 사용했어요. 내일 다시 이용해 주세요."
+        text = "오늘 서비스의 전체 또는 일반 사용자 AI 이용 한도에 도달했어요. 나중에 다시 이용해 주세요." if remaining == -2 else "오늘의 AI 이용 횟수를 모두 사용했어요. 내일 다시 이용해 주세요."
         return jsonify(message=text), 429
     try:
         history = session.get("assistant_history", [])
@@ -612,7 +623,7 @@ def assistant():
     provider_calls.set(0)
     try:
         places, center = nearby_parking(location, kind, limit=None if user else 5)
-        view = search_view(location, kind, center, places)
+        view = {**search_view(location, kind, center, places), "radius": 3}
         session["search_view"] = view
         store.record(user["id"] if user else None, "search", "success", len(places), provider_calls.get())
     except ParkingProviderError as error:
@@ -627,11 +638,14 @@ def assistant():
             reply = f"'{location}'에서 주차장을 찾았어요. 찜할 주차장 이름이나 번호를 알려주세요."
         elif user:
             favorite = {key: place[key] for key in ("name", "area", "lat", "lon")}
-            outcome = add_favorite(user, session["access_token"], favorite)
-            feedback = favorite_feedback(favorite, outcome)
-            reply = f"'{location}'에서 찾은 주차장을 찜했어요. {feedback['place_name']} · {feedback['result_label']}"
-            extra["favorites_changed"] = True
-            extra["favorite_feedback"] = feedback
+            try:
+                outcome = add_favorite(user, session["access_token"], favorite)
+                feedback = favorite_feedback(favorite, outcome)
+                reply = f"'{location}'에서 찾은 주차장이에요. {feedback['place_name']} · {feedback['result_label']}"
+                extra["favorites_changed"] = True
+                extra["favorite_feedback"] = feedback
+            except store.SupabaseError:
+                reply = f"'{location}'에서 주차장은 찾았지만 찜 저장에 실패했어요. 다시 시도해 주세요."
         else:
             session["pending_favorite"] = {key: place[key] for key in ("name", "area", "lat", "lon")}
             reply = f"'{location}'에서 찾은 {place['name']}을(를) 찜할게요. 로그인하면 자동으로 저장됩니다."

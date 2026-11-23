@@ -232,14 +232,15 @@
         <div class="fields">
           <div class="location"><label for="location">지역 또는 주차장명</label><input id="location" name="location" maxlength="100" required placeholder="예: 강남역, 부산 서면, 도로명 주소" value="{{ values[0] }}"></div>
           <div><label for="place-type">주차장 유형</label><select id="place-type" name="place_type">{% for value, label in place_types.items() %}<option value="{{ value }}" {% if value == values[1] %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+          {% set current_radius = request.form.get('radius', session.get('search_view', {}).get('radius', 3)|string) %}<div><label for="radius">검색 반경</label><select id="radius" name="radius"><option value="3" {% if current_radius == '3' %}selected{% endif %}>3km</option><option value="5" {% if current_radius == '5' %}selected{% endif %}>5km</option></select></div>
           <button class="primary" name="action" value="search">검색하기 →</button>
           {% if alias %}<button class="save" name="action" value="save">기본 설정 저장</button>{% endif %}
         </div>
       </form>
-      <p class="info-line">검색 위치에서 직선거리 3km 이내의 무료 주차장을 가까운 순으로 표시합니다.</p>
+      <p class="info-line">검색 위치를 기준으로 선택한 반경 안의 무료 주차장을 가까운 순으로 표시합니다. 도시는 중심 지점 기준입니다.</p>
       {% if message %}<p class="message" role="status">{{ message }}</p>{% endif %}
     </section>
-    <aside class="at-a-glance" aria-label="검색 범위 안내"><small>내 목적지 주변</small><div><strong>3 km</strong><p>직선거리 안의 무료 주차장<br>현장 상황은 다를 수 있어요.</p></div></aside>
+    <aside class="at-a-glance" aria-label="검색 범위 안내"><small>내 목적지 주변</small><div><strong>3–5 km</strong><p>직선거리 안의 무료 주차장<br>현장 상황은 다를 수 있어요.</p></div></aside>
     </div>
     <div class="work-area">
       <section class="results-panel" aria-labelledby="results-heading">
@@ -251,9 +252,10 @@
             <li><button type="button" class="place" {% if place.lat is not none %}data-marker="{{ loop.index0 }}"{% else %}disabled{% endif %}>
               <span class="place-heading"><strong>{{ loop.index }}. {{ place.name }}</strong><span class="free">무료</span></span>
               <small>{{ place.area }}</small>
-              <small>{{ place_types.get(place.place_type, '기타') }} · {{ place.distance_km }}km{% if place.spaces %} · {{ place.spaces }}면{% endif %}{% if place.reference_date %} · 기준일 {{ place.reference_date }}{% endif %}{% if place.provider %} · 제공 {{ place.provider }}{% endif %}{% if place.lat is none %} · 위치 정보 없음{% endif %}</small>
+              <small>{{ place_types.get(place.place_type, '기타') }} · {{ place.distance_km }}km{% if place.spaces %} · {{ place.spaces }}면{% endif %}{% if place.reference_date %} · 기준일 {{ place.reference_date }}{% else %} · 기준일 정보 없음{% endif %}{% if place.weekday_start and place.weekday_end %} · 평일 {{ place.weekday_start }}–{{ place.weekday_end }}{% endif %}{% if place.provider %} · 제공 {{ place.provider }}{% endif %}</small>
             </button>
-            {% if alias and place.lat is not none and place.lon is not none %}<button type="button" class="favorite-action" data-favorite-token="{{ favorite_token(place) }}">☆ 즐겨찾기 추가</button>{% endif %}
+            {% if alias and place.lat is not none and place.lon is not none %}<button type="button" class="favorite-action" data-favorite-token="{{ favorite_token(place) }}" data-favorite-key="{{ favorite_key(place) }}">☆ 즐겨찾기 추가</button>{% endif %}
+            {% if place.lat is not none and place.lon is not none %}<a class="favorite-action" target="_blank" rel="noopener noreferrer" href="https://map.kakao.com/link/to/{{ place.name | urlencode }},{{ place.lat }},{{ place.lon }}">길찾기 ↗</a>{% endif %}
             </li>
           {% endfor %}</ul>
         {% elif results is not none %}
@@ -263,7 +265,7 @@
         {% endif %}
         </div>
       </section>
-      <section class="map-shell" aria-label="주차장 지도"><div id="map"></div><p class="map-note" id="map-note">지도에서 위치를 확인하세요</p></section>
+      <section class="map-shell" aria-label="주차장 지도"><div id="map"></div><p class="map-note" id="map-note">{% if center %}검색 기준: {{ values[0] }} ({{ center[0]|round(5) }}, {{ center[1]|round(5) }}){% else %}지도에서 위치를 확인하세요{% endif %}</p></section>
     </div>
     <section class="favorite-box" aria-labelledby="favorite-heading">
       <h2 id="favorite-heading">★ 내 주차장 즐겨찾기</h2>
@@ -324,6 +326,14 @@
     const endpoint = {{ url_for('parking_demo.favorites') | tojson }};
     const csrf = form.querySelector('[name=form_token]').value;
     let refreshVersion = 0;
+    let savedKeys = new Set();
+    function updateFavoriteButtons() {
+      document.querySelectorAll('[data-favorite-key]').forEach((button) => {
+        const saved = savedKeys.has(button.dataset.favoriteKey);
+        button.textContent = saved ? '★ 찜 해제' : '☆ 즐겨찾기 추가';
+        button.setAttribute('aria-pressed', String(saved));
+      });
+    }
     async function request(url, body) {
       const response = await fetch(url, body ? {method: 'POST', body} : {});
       const data = await response.json().catch(() => ({}));
@@ -336,6 +346,8 @@
         const url = feedback?.place_key ? endpoint + '?focus=' + encodeURIComponent(feedback.place_key) : endpoint;
         const data = await request(url);
         if (version !== refreshVersion) return;
+        savedKeys = new Set(data.favorites.map((place) => place.place_key));
+        updateFavoriteButtons();
         list.replaceChildren();
         if (!data.favorites.length) { const empty = document.createElement('li'); empty.textContent = '아직 즐겨찾기가 없습니다.'; list.appendChild(empty); }
         let target = null;
@@ -377,12 +389,16 @@
       const button = event.target.closest('[data-favorite-token]');
       if (!button) return;
       button.disabled = true;
-      const body = new FormData(); body.set('form_token', csrf); body.set('action', 'add'); body.set('place', button.dataset.favoriteToken);
-      try { const result = await request(endpoint, body); await refresh(result); }
+      const body = new FormData(); body.set('form_token', csrf);
+      const saved = savedKeys.has(button.dataset.favoriteKey);
+      body.set('action', saved ? 'delete' : 'add');
+      if (saved) body.set('place_key', button.dataset.favoriteKey); else body.set('place', button.dataset.favoriteToken);
+      try { const result = await request(endpoint, body); if (saved) status.textContent = result.message; await refresh(saved ? null : result); }
       catch (error) { status.textContent = error.message; }
       finally { button.disabled = false; }
     });
     window.addEventListener('parking:favorites', (event) => { refresh(event.detail || null); });
+    window.addEventListener('parking:search', () => { setTimeout(updateFavoriteButtons, 0); });
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       const button = form.querySelector('button'); button.disabled = true; status.textContent = '요청을 처리하고 있습니다…';
@@ -571,6 +587,8 @@
     });
     window.addEventListener('parking:search', (event) => {
       const view = event.detail;
+      document.getElementById('radius').value = String(view.radius || 3);
+      if (view.center) document.getElementById('map-note').textContent = `검색 기준: ${view.location} (${Number(view.center[0]).toFixed(5)}, ${Number(view.center[1]).toFixed(5)})`;
       const places = view.places || [];
       const body = document.getElementById('results-body');
       document.getElementById('location').value = view.location;
@@ -594,11 +612,16 @@
           const address = document.createElement('small'); address.textContent = place.area;
           const detail = document.createElement('small');
           const types = {all: '전체', off_street: '노외 주차장', on_street: '노상 주차장'};
-          detail.textContent = `${types[place.place_type] || '기타'} · ${place.distance_km}km` + (place.spaces ? ` · ${place.spaces}면` : '') + (place.reference_date ? ` · 기준일 ${place.reference_date}` : '') + (place.provider ? ` · 제공 ${place.provider}` : '');
+          detail.textContent = `${types[place.place_type] || '기타'} · ${place.distance_km}km` + (place.spaces ? ` · ${place.spaces}면` : '') + (place.reference_date ? ` · 기준일 ${place.reference_date}` : ' · 기준일 정보 없음') + (place.weekday_start && place.weekday_end ? ` · 평일 ${place.weekday_start}–${place.weekday_end}` : '') + (place.provider ? ` · 제공 ${place.provider}` : '');
           button.append(heading, address, detail); item.appendChild(button);
           if (place.favorite_token) {
             const favorite = document.createElement('button'); favorite.type = 'button'; favorite.className = 'favorite-action';
-            favorite.dataset.favoriteToken = place.favorite_token; favorite.textContent = '☆ 즐겨찾기 추가'; item.appendChild(favorite);
+            favorite.dataset.favoriteToken = place.favorite_token; favorite.dataset.favoriteKey = place.favorite_key; favorite.textContent = '☆ 즐겨찾기 추가'; item.appendChild(favorite);
+          }
+          if (place.lat != null && place.lon != null) {
+            const link = document.createElement('a'); link.className = 'favorite-action';
+            link.href = `https://map.kakao.com/link/to/${encodeURIComponent(place.name)},${place.lat},${place.lon}`;
+            link.target = '_blank'; link.rel = 'noopener noreferrer'; link.textContent = '길찾기 ↗'; item.appendChild(link);
           }
           list.appendChild(item);
         });
