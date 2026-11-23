@@ -30,7 +30,7 @@
     <div class="chat-header"><div><strong>AI 주차장 도우미</strong><small>어느 화면에서나 이어서 대화해요</small></div><button class="chat-close" id="floating-chat-close" type="button" aria-label="대화창 닫기">×</button></div>
     <div class="chat-log" id="floating-chat-log" role="log" aria-live="polite"></div>
     <p class="chat-disclosure">예: 울산 주차장 찾아서 찜해줘 · 찜 목록 보여줘 · 1번 찜 해제해줘</p>
-    <p class="chat-disclosure">비로그인 하루 3회 · 로그인 회원 하루 5회 · 관리자는 전체 AI 이용 한도 내에서 무제한 · 대화와 검색 결과는 Google Gemini에 전송됩니다.</p>
+    <p class="chat-disclosure">비로그인 하루 3회 · 로그인 회원 하루 5회 · 관리자는 전체 AI 이용 한도 내에서 무제한 · 대화와 검색 결과는 Google Gemini에 전송되며, 검색 위치 확인에는 외부 지도 서비스가 사용됩니다.</p>
     <form class="chat-compose" id="floating-chat-form" action="{{ url_for('parking_demo.assistant') }}" method="post">
       <input type="hidden" name="form_token" value="{{ form_token }}">
       <input name="message" maxlength="500" required aria-label="메시지" placeholder="예: 서울역 근처 무료 주차장">

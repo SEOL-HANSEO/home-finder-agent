@@ -64,6 +64,23 @@ def geocode(location):
             except (URLError, OSError, ValueError, KeyError, IndexError, TypeError):
                 failed = True
         if not _valid_coordinates(result):
+            try:
+                # Open-Meteo is a third, independent fallback for geocoder outages.
+                params = urlencode({"name": location, "countryCode": "KR", "count": 10, "language": "ko"})
+                req = Request(
+                    "https://geocoding-api.open-meteo.com/v1/search?" + params,
+                    headers={"User-Agent": f"FreeParkingFinder/1.0 ({APP_URL})", "Accept": "application/json"},
+                )
+                with urlopen(req, timeout=10) as response:
+                    data = json.load(response)
+                for place in data.get("results", []):
+                    candidate = (float(place["latitude"]), float(place["longitude"]))
+                    if _valid_coordinates(candidate):
+                        result = candidate
+                        break
+            except (URLError, OSError, ValueError, KeyError, IndexError, TypeError):
+                failed = True
+        if not _valid_coordinates(result):
             if failed:
                 raise ParkingProviderError("검색 위치를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.")
             raise ParkingProviderError("검색 위치를 찾지 못했습니다. 동네나 주소를 더 자세히 입력해 주세요.")
