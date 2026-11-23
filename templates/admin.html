@@ -16,6 +16,24 @@
 </head>
 <body><main>
   <a href="{{ url_for('parking_demo.parking') }}">← 주차장 검색</a>
+  {% if owner %}
+  <h1>관리자 권한 관리</h1>
+  <p>최고 관리자만 관리자 권한을 부여하거나 해제할 수 있습니다. 권한을 부여받은 관리자는 다른 관리자를 지정할 수 없습니다.</p>
+  <form method="post">
+    <input type="hidden" name="form_token" value="{{ form_token }}">
+    <label for="admin-user-id">사용자 ID</label>
+    <input id="admin-user-id" name="user_id" required maxlength="36" placeholder="관리자로 지정할 사용자 ID">
+    <button name="action" value="grant_admin">관리자 권한 부여</button>
+  </form>
+  <div class="wrap"><table>
+    <thead><tr><th>관리자 ID</th><th>관리</th></tr></thead>
+    <tbody>{% for admin in admins %}<tr><td>{{ admin.user_id }}</td><td>
+      {% if admin.user_id == owner_id %}최고 관리자{% else %}
+      <form method="post"><input type="hidden" name="form_token" value="{{ form_token }}"><input type="hidden" name="user_id" value="{{ admin.user_id }}"><button name="action" value="revoke_admin">관리자 권한 해제</button></form>
+      {% endif %}
+    </td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
   <h1>추천 챗봇 이용 권한</h1>
   <p>가입한 사용자의 ID를 입력해 권한을 부여하세요. 관리자도 사용하려면 직접 권한을 부여해야 합니다. 허용된 계정은 한국 시간 기준 하루 3회 이용할 수 있습니다.</p>
   {% if updated %}<p role="status">권한 설정을 저장했습니다.</p>{% endif %}

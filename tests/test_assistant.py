@@ -27,6 +27,9 @@ class AssistantTests(unittest.TestCase):
         configured = patch("parking_demo.ai_assistant.configured", return_value=True)
         configured.start()
         self.addCleanup(configured.stop)
+        owner = patch("parking_demo.store.is_owner", return_value=False)
+        self.owner = owner.start()
+        self.addCleanup(owner.stop)
         with self.client.session_transaction() as session:
             session["parking_form_token"] = "test-token"
 
@@ -119,6 +122,31 @@ class AssistantTests(unittest.TestCase):
                 self.assertEqual(result.status_code, 303)
                 self.assertEqual(call.call_args.kwargs["method"], method)
                 self.assertTrue(call.call_args.kwargs["admin"])
+
+    @patch("parking_demo.store.is_admin", return_value=True)
+    @patch("parking_demo.store.get_user", return_value=USER)
+    @patch("parking_demo.store.call")
+    def test_regular_admin_cannot_change_admin_membership(self, call, get_user, is_admin):
+        self.login()
+        for action in ("grant_admin", "revoke_admin"):
+            result = self.client.post("/admin", data={"form_token": "test-token", "action": action, "user_id": USER["id"]})
+            self.assertEqual(result.status_code, 403)
+        call.assert_not_called()
+
+    @patch("parking_demo.store.is_admin", return_value=True)
+    @patch("parking_demo.store.get_user", return_value=USER)
+    @patch("parking_demo.store.call")
+    def test_owner_manages_admins_with_user_token(self, call, get_user, is_admin):
+        self.login()
+        self.owner.return_value = True
+        target = "00000000-0000-0000-0000-000000000002"
+        for action in ("grant_admin", "revoke_admin"):
+            result = self.client.post("/admin", data={"form_token": "test-token", "action": action, "user_id": target})
+            self.assertEqual(result.status_code, 303)
+            self.assertEqual(call.call_args.kwargs["token"], "test-access-token")
+            self.assertNotIn("admin", call.call_args.kwargs)
+        result = self.client.post("/admin", data={"form_token": "test-token", "action": "revoke_admin", "user_id": USER["id"]})
+        self.assertEqual(result.status_code, 400)
 
     @patch("parking_demo.store.is_admin", return_value=False)
     @patch("parking_demo.store.preferences", return_value=[])

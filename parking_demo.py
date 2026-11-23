@@ -158,16 +158,27 @@ def admin():
         token = session["access_token"]
         if not store.is_admin(token):
             abort(403)
+        owner = store.is_owner(token)
         if request.method == "POST":
             check_form_token()
             action = request.form.get("action")
-            if action not in ("grant_chat", "revoke_chat"):
+            if action not in ("grant_chat", "revoke_chat", "grant_admin", "revoke_admin"):
                 abort(400)
+            if action in ("grant_admin", "revoke_admin") and not owner:
+                abort(403)
             try:
                 target = str(UUID(request.form.get("user_id", "").strip()))
             except ValueError:
                 abort(400, "올바른 사용자 ID를 입력해 주세요.")
-            if action == "grant_chat":
+            if action == "grant_admin":
+                store.call("/rest/v1/parking_admins?on_conflict=user_id", method="POST", token=token,
+                           body={"user_id": target}, prefer="resolution=ignore-duplicates,return=minimal")
+            elif action == "revoke_admin":
+                if target == user["id"]:
+                    abort(400, "최고 관리자 본인의 권한은 해제할 수 없습니다.")
+                store.call("/rest/v1/parking_admins?user_id=eq." + target, method="DELETE", token=token,
+                           prefer="return=minimal")
+            elif action == "grant_chat":
                 store.call("/rest/v1/parking_chat_access?on_conflict=user_id", method="POST", admin=True,
                            body={"user_id": target, "granted_by": user["id"]},
                            prefer="resolution=ignore-duplicates,return=minimal")
@@ -177,6 +188,7 @@ def admin():
             return redirect(url_for(".admin", updated="1"), code=303)
         logs = store.call("/rest/v1/parking_audit?select=created_at,actor_alias,action,outcome,result_count,provider_calls&order=created_at.desc&limit=100", token=token)
         changes = store.call("/rest/v1/parking_admin_activity?select=occurred_at,actor_id,parking_lot_id,operation&order=occurred_at.desc&limit=100", token=token)
+        admins = store.call("/rest/v1/parking_admins?select=user_id&order=user_id.asc", token=token) if owner else []
     except store.SupabaseError:
         abort(503, "기록을 불러오지 못했습니다.")
     try:
@@ -184,7 +196,8 @@ def admin():
     except store.SupabaseError:
         chat_access = None
     return render_template("admin.html", logs=logs, changes=changes, chat_access=chat_access,
-                           form_token=form_token(), updated=request.args.get("updated") == "1")
+                           form_token=form_token(), updated=request.args.get("updated") == "1",
+                           owner=owner, admins=admins, owner_id=user["id"])
 
 
 @parking_demo.post("/assistant")

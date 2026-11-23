@@ -56,6 +56,11 @@ def is_admin(token):
     return bool(result)
 
 
+def is_owner(token):
+    result = call("/rest/v1/parking_owner?select=user_id&limit=1", token=token)
+    return bool(result)
+
+
 def preferences(token):
     return call("/rest/v1/parking_preferences?select=location,place_type&limit=1", token=token)
 
