@@ -1,7 +1,10 @@
 """Parking search with Supabase authentication and administrator audit."""
 import secrets
 import hashlib
+import hmac
+import ipaddress
 import json
+import os
 import re
 from uuid import UUID
 from flask import Blueprint, abort, current_app, jsonify, redirect, render_template, request, session, url_for
@@ -58,6 +61,30 @@ def check_form_token():
         abort(403)
 
 
+def consume_ai_quota(user):
+    """Limit non-admin users per account or guest network, plus the shared API budget."""
+    if user:
+        identity = "user:" + user["id"]
+        limit = 10 if store.is_admin(session["access_token"]) else 3
+    else:
+        address = request.remote_addr or "unknown"
+        if os.getenv("RENDER", "").lower() == "true":
+            forwarded = request.headers.get("X-Forwarded-For", "").split(",")[-1].strip()
+            try:
+                address = str(ipaddress.ip_address(forwarded))
+            except ValueError:
+                pass
+        identity = "guest:" + address
+        limit = 3
+    secret = store.setting("GEMINI_API_KEY")
+    digest = hmac.new(secret.encode(), identity.encode(), hashlib.sha256).hexdigest()
+    remaining = store.call("/rest/v1/rpc/parking_consume_ai", method="POST", admin=True,
+                           body={"p_actor_hash": digest, "p_actor_limit": limit})
+    if type(remaining) is not int:
+        raise store.SupabaseError()
+    return remaining
+
+
 def current_user():
     token = session.get("access_token")
     if not token:
@@ -98,9 +125,12 @@ def account(mode):
                 token = data.get("access_token")
                 if token:
                     user = store.get_user(token)
+                    history = session.get("assistant_history", [])
                     session.clear()
                     session.rotate()
                     session["access_token"] = token
+                    if history:
+                        session["assistant_history"] = history
                     store.record(user["id"], mode, "success")
                     return redirect(url_for(".parking"), code=303)
                 if mode == "signup":
@@ -146,7 +176,10 @@ def parking():
         action = request.form.get("action")
         if action == "logout":
             store.record(user["id"] if user else None, "logout", "success")
+            history = session.get("assistant_history", [])
             session.clear()
+            if history:
+                session["assistant_history"] = history
             return redirect(url_for(".parking"), code=303)
         if action not in ("search", "save"):
             abort(400)
@@ -227,7 +260,7 @@ def favorite_command():
     remaining = None
     if ai_assistant.configured():
         try:
-            remaining = store.call("/rest/v1/rpc/parking_use_chat", method="POST", admin=True, body={"p_user_id": user["id"]})
+            remaining = consume_ai_quota(user)
         except store.SupabaseError:
             return jsonify(message="AI 사용 권한을 확인하지 못했습니다."), 503
         if type(remaining) is not int:
@@ -264,9 +297,9 @@ def admin():
         if request.method == "POST":
             check_form_token()
             action = request.form.get("action")
-            if action not in ("grant_chat", "revoke_chat", "grant_admin", "revoke_admin"):
+            if action not in ("grant_admin", "revoke_admin"):
                 abort(400)
-            if action in ("grant_admin", "revoke_admin") and not owner:
+            if not owner:
                 abort(403)
             try:
                 target = str(UUID(request.form.get("user_id", "").strip()))
@@ -280,24 +313,13 @@ def admin():
                     abort(400, "최고 관리자 본인의 권한은 해제할 수 없습니다.")
                 store.call("/rest/v1/parking_admins?user_id=eq." + target, method="DELETE", token=token,
                            prefer="return=minimal")
-            elif action == "grant_chat":
-                store.call("/rest/v1/parking_chat_access?on_conflict=user_id", method="POST", admin=True,
-                           body={"user_id": target, "granted_by": user["id"]},
-                           prefer="resolution=ignore-duplicates,return=minimal")
-            else:
-                store.call("/rest/v1/parking_chat_access?user_id=eq." + target, method="DELETE", admin=True,
-                           prefer="return=minimal")
             return redirect(url_for(".admin", updated="1"), code=303)
         logs = store.call("/rest/v1/parking_audit?select=created_at,actor_alias,action,outcome,result_count,provider_calls&order=created_at.desc&limit=100", token=token)
         changes = store.call("/rest/v1/parking_admin_activity?select=occurred_at,actor_id,parking_lot_id,operation&order=occurred_at.desc&limit=100", token=token)
         admins = store.call("/rest/v1/parking_admins?select=user_id&order=user_id.asc", token=token) if owner else []
     except store.SupabaseError:
         abort(503, "기록을 불러오지 못했습니다.")
-    try:
-        chat_access = store.call("/rest/v1/parking_chat_access?select=user_id,granted_at&order=granted_at.desc&limit=100", admin=True)
-    except store.SupabaseError:
-        chat_access = None
-    return render_template("admin.html", logs=logs, changes=changes, chat_access=chat_access,
+    return render_template("admin.html", logs=logs, changes=changes,
                            form_token=form_token(), updated=request.args.get("updated") == "1",
                            owner=owner, admins=admins, owner_id=user["id"])
 
@@ -306,8 +328,6 @@ def admin():
 def assistant():
     check_form_token()
     user = current_user()
-    if not user:
-        return jsonify(message="로그인 후 사용할 수 있어요."), 401
     message = request.form.get("message", "").strip()
     if not message or len(message) > 500:
         return jsonify(message="메시지를 1자 이상 500자 이하로 입력해 주세요."), 400
@@ -315,14 +335,12 @@ def assistant():
         return jsonify(message="AI 서비스가 아직 설정되지 않았습니다. 관리자에게 문의해 주세요."), 503
     check_rate_limit("search", per_session=5, total=30)
     try:
-        remaining = store.call("/rest/v1/rpc/parking_use_chat", method="POST", admin=True,
-                               body={"p_user_id": user["id"]})
+        remaining = consume_ai_quota(user)
     except store.SupabaseError:
         return jsonify(message="이용 권한을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요."), 503
-    if not isinstance(remaining, int) or isinstance(remaining, bool):
-        return jsonify(message="이용 권한을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요."), 503
     if remaining < 0:
-        return jsonify(message="이용 권한이 없거나 오늘의 3회 이용 한도를 모두 사용했어요. 관리자에게 문의하거나 내일 다시 이용해 주세요."), 403
+        text = "오늘 전체 AI 이용 한도에 도달했어요. 내일 다시 이용해 주세요." if remaining == -2 else "오늘의 AI 이용 횟수를 모두 사용했어요. 내일 다시 이용해 주세요."
+        return jsonify(message=text), 429
     try:
         history = session.get("assistant_history", [])
         answer = ai_assistant.respond(message, history)

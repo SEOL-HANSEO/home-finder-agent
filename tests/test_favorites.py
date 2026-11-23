@@ -42,9 +42,10 @@ class FavoriteTests(unittest.TestCase):
 
     @patch("parking_demo.ai_assistant.select_favorite", return_value=1)
     @patch("parking_demo.ai_assistant.configured", return_value=True)
+    @patch("parking_demo.store.is_admin", return_value=False)
     @patch("parking_demo.store.get_user", return_value=USER)
     @patch("parking_demo.store.call")
-    def test_ai_command_uses_quota_and_same_save(self, call, get_user, configured, select):
+    def test_ai_command_uses_quota_and_same_save(self, call, get_user, is_admin, configured, select):
         call.side_effect = [2, None]
         result = self.client.post("/favorites/command", data={"form_token": "csrf", "command": "서울역 주차장을 저장해", "place": self.place_token})
         self.assertEqual(result.status_code, 200)

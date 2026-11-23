@@ -30,6 +30,9 @@ class AssistantTests(unittest.TestCase):
         owner = patch("parking_demo.store.is_owner", return_value=False)
         self.owner = owner.start()
         self.addCleanup(owner.stop)
+        admin = patch("parking_demo.store.is_admin", return_value=False)
+        self.is_admin = admin.start()
+        self.addCleanup(admin.stop)
         with self.client.session_transaction() as session:
             session["parking_form_token"] = "test-token"
 
@@ -40,9 +43,12 @@ class AssistantTests(unittest.TestCase):
     def request_chat(self, message="강남역 근처 노외 무료 주차장"):
         return self.client.post("/assistant", data={"form_token": "test-token", "message": message})
 
-    @patch("parking_demo.store.call")
-    def test_login_and_csrf_required(self, call):
-        self.assertEqual(self.request_chat().status_code, 401)
+    @patch("parking_demo.ai_assistant.respond", return_value={"action": "reply", "reply": "안녕하세요", "location": "", "place_type": "all"})
+    @patch("parking_demo.store.call", return_value=2)
+    def test_guest_allowed_and_csrf_required(self, call, respond):
+        self.assertEqual(self.request_chat().status_code, 200)
+        self.assertEqual(call.call_args.kwargs["body"]["p_actor_limit"], 3)
+        call.reset_mock()
         self.assertEqual(self.client.post("/assistant").status_code, 403)
         call.assert_not_called()
 
@@ -51,7 +57,7 @@ class AssistantTests(unittest.TestCase):
     @patch("parking_demo.store.call", return_value=-1)
     def test_denied_never_queries_provider(self, call, get_user, nearby):
         self.login()
-        self.assertEqual(self.request_chat().status_code, 403)
+        self.assertEqual(self.request_chat().status_code, 429)
         nearby.assert_not_called()
 
     @patch("parking_demo.store.record")
@@ -66,7 +72,17 @@ class AssistantTests(unittest.TestCase):
         self.assertEqual(result.json["remaining"], 2)
         self.assertEqual(result.json["places"][0]["name"], "주차장")
         nearby.assert_called_once_with("강남역", "off_street", limit=3)
-        self.assertEqual(call.call_args.kwargs["body"], {"p_user_id": USER["id"]})
+        self.assertEqual(call.call_args.kwargs["body"]["p_actor_limit"], 3)
+        self.assertEqual(len(call.call_args.kwargs["body"]["p_actor_hash"]), 64)
+
+    @patch("parking_demo.ai_assistant.respond", return_value={"action": "reply", "reply": "안녕하세요", "location": "", "place_type": "all"})
+    @patch("parking_demo.store.get_user", return_value=USER)
+    @patch("parking_demo.store.call", return_value=9)
+    def test_admin_has_ten_daily_messages(self, call, get_user, respond):
+        self.login()
+        self.is_admin.return_value = True
+        self.assertEqual(self.request_chat().status_code, 200)
+        self.assertEqual(call.call_args.kwargs["body"]["p_actor_limit"], 10)
 
     @patch("parking_demo.store.record")
     @patch("parking_demo.nearby_parking", side_effect=ParkingProviderError("조회 실패"))
@@ -114,18 +130,6 @@ class AssistantTests(unittest.TestCase):
     @patch("parking_demo.store.is_admin", return_value=True)
     @patch("parking_demo.store.get_user", return_value=USER)
     @patch("parking_demo.store.call")
-    def test_admin_can_grant_and_revoke(self, call, get_user, is_admin):
-        self.login()
-        for action, method in (("grant_chat", "POST"), ("revoke_chat", "DELETE")):
-            with self.subTest(action=action):
-                result = self.client.post("/admin", data={"form_token": "test-token", "action": action, "user_id": USER["id"]})
-                self.assertEqual(result.status_code, 303)
-                self.assertEqual(call.call_args.kwargs["method"], method)
-                self.assertTrue(call.call_args.kwargs["admin"])
-
-    @patch("parking_demo.store.is_admin", return_value=True)
-    @patch("parking_demo.store.get_user", return_value=USER)
-    @patch("parking_demo.store.call")
     def test_regular_admin_cannot_change_admin_membership(self, call, get_user, is_admin):
         self.login()
         for action in ("grant_admin", "revoke_admin"):
@@ -156,7 +160,49 @@ class AssistantTests(unittest.TestCase):
         result = self.client.get("/")
         self.assertEqual(result.status_code, 200)
         self.assertIn(USER["id"].encode(), result.data)
-        self.assertIn(b'id="chat-form"', result.data)
+        self.assertIn(b'id="floating-chat-form"', result.data)
+
+    def test_chat_widget_visible_on_login_and_signup(self):
+        for mode in ("login", "signup"):
+            result = self.client.get("/account/" + mode)
+            self.assertEqual(result.status_code, 200)
+            self.assertIn(b'id="floating-chat-form"', result.data)
+
+    @patch("parking_demo.store.record")
+    @patch("parking_demo.store.preferences", return_value=[])
+    @patch("parking_demo.store.get_user", return_value=USER)
+    def test_chat_history_survives_logout(self, get_user, preferences, record):
+        self.login()
+        history = [{"role": "user", "text": "서울역"}]
+        with self.client.session_transaction() as session:
+            session["assistant_history"] = history
+        result = self.client.post("/", data={"form_token": "test-token", "action": "logout"})
+        self.assertEqual(result.status_code, 303)
+        with self.client.session_transaction() as session:
+            self.assertEqual(session["assistant_history"], history)
+            self.assertNotIn("access_token", session)
+
+    @patch("parking_demo.store.record")
+    @patch("parking_demo.store.get_user", return_value=USER)
+    @patch("parking_demo.store.call", return_value={"access_token": "token"})
+    def test_chat_history_survives_login(self, call, get_user, record):
+        history = [{"role": "user", "text": "서울역"}]
+        with self.client.session_transaction() as session:
+            session["assistant_history"] = history
+        result = self.client.post("/account/login", data={"form_token": "test-token", "username": "test@example.com", "password": "password123"})
+        self.assertEqual(result.status_code, 303)
+        with self.client.session_transaction() as session:
+            self.assertEqual(session["assistant_history"], history)
+            self.assertEqual(session["access_token"], "token")
+
+    @patch("parking_demo.store.is_admin", return_value=True)
+    @patch("parking_demo.store.get_user", return_value=USER)
+    @patch("parking_demo.store.call", return_value=[])
+    def test_chat_widget_visible_on_admin_page(self, call, get_user, is_admin):
+        self.login()
+        response = self.client.get("/admin")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'id="floating-chat-form"', response.data)
 
 
 if __name__ == "__main__":

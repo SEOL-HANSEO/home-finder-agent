@@ -118,6 +118,29 @@
     .chat-form input { flex: 1; min-width: 0; }
     .chat-response { margin-top: 15px; white-space: pre-wrap; overflow-wrap: anywhere; }
     .chat-turn { margin: 10px 0; padding: 12px; border-radius: 10px; background: #f1f8f4; }
+    /* A spacious, high-contrast bento layout for search, map and saved places. */
+    body { background: #f1f5f0; }
+    .topbar { background: #153f32; }
+    header { border-bottom: 1px solid #e3eae3; }
+    main { max-width: 1320px; }
+    .eyebrow { display: block; margin-bottom: 12px; color: #28734e; font-size: 12px; font-weight: 800; letter-spacing: .1em; }
+    .heading { align-items: end; margin: 36px 0 28px; }
+    .heading h1 { font-size: clamp(36px, 5vw, 64px); line-height: 1.12; font-weight: 700; letter-spacing: -.075em; }
+    .heading h1 span { color: #327e57; }
+    .heading p { max-width: 440px; color: #526960; font-size: 15px; line-height: 1.7; }
+    .dashboard-head { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 16px; align-items: stretch; }
+    .dashboard-head .search-box { margin: 0; padding: 28px; border: 1px solid #e0eae2; border-radius: 20px; box-shadow: none; }
+    .dashboard-head .search-heading h2 { font-size: 20px; }
+    .at-a-glance { border-radius: 20px; padding: 23px; background: #174c39; color: #fff; display: flex; flex-direction: column; justify-content: space-between; }
+    .at-a-glance small { font-size: 12px; color: #d1e7d9; }
+    .at-a-glance strong { display: block; margin: 16px 0 4px; font: 700 40px/1 'DM Sans',sans-serif; letter-spacing: -.06em; }
+    .at-a-glance p { color: #d1e7d9; font-size: 12px; }
+    .work-area { margin-top: 16px; border-radius: 20px; }
+    .favorite-box, .chat-box { box-shadow: none; }
+    [data-theme="dark"] body { background: #101c1b; }
+    [data-theme="dark"] .heading p { color: #c5d7cc; }
+    [data-theme="dark"] .heading h1 span, [data-theme="dark"] .eyebrow { color: #86d5a7; }
+    @media (max-width: 760px) { .dashboard-head { grid-template-columns: 1fr; } .at-a-glance { min-height: 126px; } .heading { margin-top: 26px; } }
     .favorite-action { margin: 0 24px 16px; color: #08745f; }
     .favorite-box { margin-top: 28px; padding: 24px; border: 1px solid var(--line); border-radius: 20px; background: #fff; }
     .favorite-box h2 { font-size: 18px; }
@@ -197,7 +220,9 @@
   </div></header>
   <main>
     <div class="breadcrumb">홈 &nbsp; / &nbsp; 주차장 검색 &nbsp; / &nbsp; <strong>무료주차장</strong></div>
-    <div class="heading"><div><h1>무료주차장 찾기</h1><p>목적지 주변의 무료 주차장을 검색하고 지도에서 확인하세요.</p></div><a class="data-source" href="https://www.data.go.kr/data/15012896/standard.do" target="_blank" rel="noopener noreferrer">데이터 출처 확인 ↗</a></div>
+    {% if alias %}<details class="info-line"><summary>내 계정 ID 보기</summary><code>{{ user_id }}</code></details>{% endif %}
+    <div class="heading"><div><span class="eyebrow">PARKING, MADE SIMPLE</span><h1>가까운 곳에서<br><span>편하게 주차하세요.</span></h1><p>목적지 주변 무료 주차장을 검색하고 지도에서 한눈에 확인하세요.</p></div><a class="data-source" href="https://www.data.go.kr/data/15012896/standard.do" target="_blank" rel="noopener noreferrer">데이터 출처 확인 ↗</a></div>
+    <div class="dashboard-head">
     <section class="search-box">
       <div class="search-heading"><h2>주차장 검색</h2><span class="mode">무료 주차장</span></div>
       <form method="post" action="{{ url_for('parking_demo.parking') }}">
@@ -212,6 +237,8 @@
       <p class="info-line">검색 위치에서 직선거리 3km 이내의 무료 주차장을 가까운 순으로 표시합니다.</p>
       {% if message %}<p class="message" role="status">{{ message }}</p>{% endif %}
     </section>
+    <aside class="at-a-glance" aria-label="검색 범위 안내"><small>내 목적지 주변</small><div><strong>3 km</strong><p>직선거리 안의 무료 주차장<br>현장 상황은 다를 수 있어요.</p></div></aside>
+    </div>
     <div class="work-area">
       <section class="results-panel" aria-labelledby="results-heading">
         <div class="results-title"><h2 id="results-heading">검색 결과</h2><span id="result-count">{% if results is not none %}{{ results|length }}곳{% endif %}</span></div>
@@ -240,7 +267,7 @@
       <h2 id="favorite-heading">★ 내 주차장 즐겨찾기</h2>
       {% if alias %}
       <p>검색 결과에서 별 버튼을 누르거나 아래에 한 줄로 요청해 주세요. 한 줄 요청은 검색 결과 앞 30곳에서 선택합니다.</p>
-      <p><strong id="favorite-mode">{{ 'AI 선택 또는 모의 선택' if favorite_ai_configured else '모의 선택' }}</strong> · AI 선택은 허용된 계정의 하루 3회 AI 사용 횟수를 차감하며 요청과 검색 결과를 Google에 보냅니다. AI를 사용할 수 없을 때는 ‘1번 즐겨찾기 추가’처럼 입력하세요.</p>
+      <p><strong id="favorite-mode">{{ 'AI 선택 또는 모의 선택' if favorite_ai_configured else '모의 선택' }}</strong> · AI 선택은 챗봇과 이용 횟수를 공유하며 요청과 검색 결과를 Google에 보냅니다. AI를 사용할 수 없을 때는 ‘1번 즐겨찾기 추가’처럼 입력하세요.</p>
       <form id="favorite-command" class="favorite-command" action="{{ url_for('parking_demo.favorite_command') }}" method="post">
         <input type="hidden" name="form_token" value="{{ form_token }}">
         <label for="favorite-request">한 줄 요청</label>
@@ -251,24 +278,6 @@
       <ul id="favorite-list" class="favorite-list"><li>즐겨찾기를 불러오는 중입니다.</li></ul>
       {% else %}
       <p><a href="{{ url_for('parking_demo.account', mode='login') }}">로그인</a>하면 즐겨찾기를 추가하고 목록을 확인할 수 있어요.</p>
-      {% endif %}
-    </section>
-    <section class="chat-box" aria-labelledby="chat-heading">
-      <h2 id="chat-heading">AI 주차장 도우미</h2>
-      <p>위치나 원하는 조건을 편하게 말씀해 주세요. AI가 대화를 이해하고 공공데이터에서 가까운 무료 주차장을 찾아드려요.</p>
-      <p>대화 내용은 답변을 위해 Google Gemini로 전송되며 서비스 개선에 사용될 수 있습니다. 민감한 개인정보는 입력하지 마세요.</p>
-      {% if alias %}
-      <p>관리자가 허용한 계정은 한국 시간 기준 하루 3회 메시지를 보낼 수 있습니다. 응답이나 검색에 오류가 나도 횟수가 차감됩니다.</p>
-      <p class="user-id">내 사용자 ID: <code>{{ user_id }}</code> · 권한이 필요하면 관리자에게 이 ID를 알려주세요.</p>
-      <form class="chat-form" id="chat-form" action="{{ url_for('parking_demo.assistant') }}" method="post">
-        <input type="hidden" name="form_token" value="{{ form_token }}">
-        <label for="chat-message" class="chat-label">위치</label>
-        <input id="chat-message" name="message" required maxlength="500" placeholder="예: 강남역 근처 노외 주차장을 찾아줘">
-        <button type="submit" class="primary">보내기</button>
-      </form>
-      <div id="chat-response" class="chat-response" role="status" aria-live="polite"></div>
-      {% else %}
-      <p><a href="{{ url_for('parking_demo.account', mode='login') }}">로그인</a> 후 관리자에게 이용 권한을 요청해 주세요.</p>
       {% endif %}
     </section>
     <section class="service-guide" aria-labelledby="service-guide-heading">
@@ -372,43 +381,6 @@
       finally { button.disabled = false; }
     });
     refresh();
-  })();
-  (() => {
-    const form = document.getElementById('chat-form');
-    if (!form) return;
-    const response = document.getElementById('chat-response');
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const button = form.querySelector('button');
-      const input = document.getElementById('chat-message');
-      const body = new FormData(form);
-      const userTurn = document.createElement('div');
-      userTurn.className = 'chat-turn';
-      userTurn.textContent = `나: ${input.value}`;
-      response.appendChild(userTurn);
-      const answer = document.createElement('div');
-      answer.className = 'chat-turn';
-      answer.textContent = 'AI: 답변을 준비하고 있어요…';
-      response.appendChild(answer);
-      button.disabled = true;
-      try {
-        const res = await fetch(form.action, {method: 'POST', body});
-        const data = await res.json().catch(() => ({}));
-        answer.textContent = 'AI: ' + (data.message || (res.status === 429 ? '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' : '요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.'));
-        if (Number.isInteger(data.remaining)) answer.textContent += `\n오늘 남은 횟수: ${data.remaining}회`;
-        const results = document.createElement('ol');
-        results.className = 'chat-results';
-        (data.places || []).forEach((place) => {
-          const item = document.createElement('li');
-          item.textContent = `${place.name} · ${place.distance_km}km · ${place.area}`;
-          results.appendChild(item);
-        });
-        if (results.children.length) answer.appendChild(results);
-        if (res.ok) input.value = '';
-      } catch (error) {
-        answer.textContent = 'AI: 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.';
-      } finally { button.disabled = false; }
-    });
   })();
   (() => {
     const steps = Array.from(document.querySelectorAll('.flow-step'));
@@ -516,5 +488,6 @@
     {% endif %}
   });
 </script>
+{% include '_chat_widget.html' %}
 </body>
 </html>
