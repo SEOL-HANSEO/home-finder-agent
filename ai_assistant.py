@@ -93,14 +93,13 @@ def respond(message, history, places=None, authenticated=False):
                 or not isinstance(favorite_after_search, bool)
                 or (action == "search" and not location.strip())):
             raise ValueError("Invalid model response")
-        result = {"action": action, "reply": reply.strip()[:500], "location": location.strip(), "place_type": kind,
-                  "favorite_after_search": favorite_after_search}
+        result = {"action": action, "reply": reply.strip()[:500], "location": location.strip(), "place_type": kind}
         if action == "search" and favorite_after_search:
             number = answer.get("number", 0)
             target_name = answer.get("target_name", "")
             if type(number) is not int or not 0 <= number <= 200 or not isinstance(target_name, str) or len(target_name) > 254:
                 raise ValueError("Invalid chained favorite selection")
-            result.update(number=number, target_name=target_name)
+            result.update(favorite_after_search=True, number=number, target_name=target_name)
         if action not in ("search", "reply"):
             number = answer.get("number", 0)
             if type(number) is not int or not 0 <= number <= 200:

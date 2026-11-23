@@ -74,17 +74,17 @@ class AssistantTests(unittest.TestCase):
         nearby.assert_called_once_with("강남역", "off_street", limit=None)
         self.assertEqual(result.json["search"]["location"], "강남역")
         self.assertEqual(result.json["search"]["center"], [37, 127])
-        self.assertEqual(call.call_args.kwargs["body"]["p_actor_limit"], 3)
+        self.assertEqual(call.call_args.kwargs["body"]["p_actor_limit"], 5)
         self.assertEqual(len(call.call_args.kwargs["body"]["p_actor_hash"]), 64)
 
     @patch("parking_demo.ai_assistant.respond", return_value={"action": "reply", "reply": "안녕하세요", "location": "", "place_type": "all"})
     @patch("parking_demo.store.get_user", return_value=USER)
     @patch("parking_demo.store.call", return_value=9)
-    def test_admin_has_ten_daily_messages(self, call, get_user, respond):
+    def test_admin_uses_shared_limit_without_personal_cap(self, call, get_user, respond):
         self.login()
         self.is_admin.return_value = True
         self.assertEqual(self.request_chat().status_code, 200)
-        self.assertEqual(call.call_args.kwargs["body"]["p_actor_limit"], 10)
+        self.assertEqual(call.call_args.kwargs["body"]["p_actor_limit"], 0)
 
     @patch("parking_demo.store.record")
     @patch("parking_demo.nearby_parking", side_effect=ParkingProviderError("조회 실패"))
