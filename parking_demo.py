@@ -143,7 +143,7 @@ def consume_ai_quota(user):
     """Limit non-admin users per account or guest network, plus the shared API budget."""
     if user:
         identity = "user:" + user["id"]
-        limit = 10 if store.is_admin(session["access_token"]) else 3
+        limit = 0 if store.is_admin(session["access_token"]) else 5
     else:
         address = request.remote_addr or "unknown"
         if os.getenv("RENDER", "").lower() == "true":

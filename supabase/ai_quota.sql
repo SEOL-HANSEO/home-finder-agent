@@ -24,22 +24,25 @@ declare
   general_uses integer;
   actor_uses integer;
 begin
-  if p_actor_hash is null or p_actor_limit is null or p_actor_hash !~ '^[a-f0-9]{64}$' or p_actor_limit not in (3, 10) then
+  if p_actor_hash is null or p_actor_limit is null or p_actor_hash !~ '^[a-f0-9]{64}$' or p_actor_limit not in (0, 3, 5) then
     raise exception 'Invalid quota input';
   end if;
   insert into public.parking_ai_daily_total (usage_day, uses) values (total_day, 0) on conflict do nothing;
   select uses, t.general_uses into total_uses, general_uses from public.parking_ai_daily_total t where usage_day = total_day for update;
   -- Preserve ten requests for administrators when guests consume their share.
-  if total_uses >= 30 or (p_actor_limit = 3 and general_uses >= 20) then return -2; end if;
-  insert into public.parking_ai_daily_actor (usage_day, actor_hash, uses)
-    values (actor_day, p_actor_hash, 1)
-    on conflict (usage_day, actor_hash) do update set uses = public.parking_ai_daily_actor.uses + 1
-    where public.parking_ai_daily_actor.uses < p_actor_limit
-    returning uses into actor_uses;
-  if actor_uses is null then return -1; end if;
+  if total_uses >= 30 or (p_actor_limit <> 0 and general_uses >= 20) then return -2; end if;
+  if p_actor_limit <> 0 then
+    insert into public.parking_ai_daily_actor (usage_day, actor_hash, uses)
+      values (actor_day, p_actor_hash, 1)
+      on conflict (usage_day, actor_hash) do update set uses = public.parking_ai_daily_actor.uses + 1
+      where public.parking_ai_daily_actor.uses < p_actor_limit
+      returning uses into actor_uses;
+    if actor_uses is null then return -1; end if;
+  end if;
   update public.parking_ai_daily_total set uses = uses + 1,
-    general_uses = public.parking_ai_daily_total.general_uses + case when p_actor_limit = 3 then 1 else 0 end
+    general_uses = public.parking_ai_daily_total.general_uses + case when p_actor_limit = 0 then 0 else 1 end
     where usage_day = total_day;
+  if p_actor_limit = 0 then return 30 - total_uses - 1; end if;
   return p_actor_limit - actor_uses;
 end $$;
 revoke all on function public.parking_consume_ai(text, integer) from public, anon, authenticated;
