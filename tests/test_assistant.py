@@ -154,6 +154,40 @@ class AssistantTests(unittest.TestCase):
         result = self.client.post("/admin", data={"form_token": "test-token", "action": "revoke_admin", "user_id": USER["id"]})
         self.assertEqual(result.status_code, 400)
 
+    @patch("parking_demo.set_administrator")
+    @patch("parking_demo.store.user_id_by_email", return_value="00000000-0000-0000-0000-000000000002")
+    @patch("parking_demo.store.is_admin", return_value=True)
+    @patch("parking_demo.store.get_user", return_value=USER)
+    def test_owner_can_grant_by_email(self, get_user, is_admin, lookup, set_admin):
+        self.login()
+        self.owner.return_value = True
+        result = self.client.post("/admin", data={"form_token": "test-token", "action": "grant_admin", "email": "friend@example.com"})
+        self.assertEqual(result.status_code, 303)
+        lookup.assert_called_once_with("friend@example.com")
+        set_admin.assert_called_once_with(USER, "test-access-token", "00000000-0000-0000-0000-000000000002", True)
+
+    @patch("parking_demo.store.call", return_value=[])
+    @patch("parking_demo.set_administrator")
+    @patch("parking_demo.store.user_id_by_email", return_value=None)
+    @patch("parking_demo.store.is_admin", return_value=True)
+    @patch("parking_demo.store.get_user", return_value=USER)
+    def test_missing_email_shows_error_without_grant(self, get_user, is_admin, lookup, set_admin, call):
+        self.login()
+        self.owner.return_value = True
+        result = self.client.post("/admin", data={"form_token": "test-token", "action": "grant_admin", "email": "missing@example.com"})
+        self.assertEqual(result.status_code, 404)
+        self.assertIn("가입된 계정을 찾지 못했습니다".encode(), result.data)
+        set_admin.assert_not_called()
+
+    @patch("parking_demo.store.user_id_by_email")
+    @patch("parking_demo.store.is_admin", return_value=True)
+    @patch("parking_demo.store.get_user", return_value=USER)
+    def test_non_owner_cannot_lookup_email(self, get_user, is_admin, lookup):
+        self.login()
+        result = self.client.post("/admin", data={"form_token": "test-token", "action": "grant_admin", "email": "friend@example.com"})
+        self.assertEqual(result.status_code, 403)
+        lookup.assert_not_called()
+
     @patch("parking_demo.store.is_admin", return_value=False)
     @patch("parking_demo.store.preferences", return_value=[])
     @patch("parking_demo.store.get_user", return_value=USER)
@@ -309,10 +343,23 @@ class AssistantTests(unittest.TestCase):
         self.login()
         self.owner.return_value = True
         result = self.request_chat("관리자 권한 부여해줘")
-        self.assertIn("ID", result.json["message"])
+        self.assertIn("이메일", result.json["message"])
         set_admin.assert_not_called()
         result = self.request_chat("00000000-0000-0000-0000-000000000002 관리자 권한 부여해줘")
         self.assertTrue(result.json["admin_changed"])
+        set_admin.assert_called_once_with(USER, "test-access-token", "00000000-0000-0000-0000-000000000002", True)
+
+    @patch("parking_demo.set_administrator")
+    @patch("parking_demo.store.user_id_by_email", return_value="00000000-0000-0000-0000-000000000002")
+    @patch("parking_demo.ai_assistant.respond", return_value={"action": "admin_grant", "email": "friend@example.com"})
+    @patch("parking_demo.store.get_user", return_value=USER)
+    @patch("parking_demo.store.call", return_value=2)
+    def test_owner_can_grant_by_email_in_chat(self, call, get_user, ai, lookup, set_admin):
+        self.login()
+        self.owner.return_value = True
+        result = self.request_chat("friend@example.com 관리자 권한 부여해줘")
+        self.assertTrue(result.json["admin_changed"])
+        lookup.assert_called_once_with("friend@example.com")
         set_admin.assert_called_once_with(USER, "test-access-token", "00000000-0000-0000-0000-000000000002", True)
 
     def test_previous_chat_search_can_render_on_home(self):

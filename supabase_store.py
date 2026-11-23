@@ -61,6 +61,23 @@ def is_owner(token):
     return bool(result)
 
 
+def user_id_by_email(email):
+    """Look up an exact email on the server after the caller checks owner rights."""
+    matches = []
+    for page in range(1, 101):
+        data = call(f"/auth/v1/admin/users?page={page}&per_page=1000", admin=True)
+        users = data.get("users") if isinstance(data, dict) else None
+        if not isinstance(users, list):
+            raise SupabaseError()
+        matches.extend(u.get("id") for u in users if isinstance(u, dict) and isinstance(u.get("email"), str)
+                       and u["email"].casefold() == email.casefold() and u.get("id"))
+        if len(users) < 1000:
+            if len(matches) > 1:
+                raise SupabaseError()
+            return matches[0] if matches else None
+    raise SupabaseError()
+
+
 def preferences(token):
     return call("/rest/v1/parking_preferences?select=location,place_type&limit=1", token=token)
 

@@ -305,6 +305,7 @@ def parking():
                            admin=admin, values=values, place_types=PLACE_TYPES, results=results,
                            center=center, message=message, form_token=form_token(), favorite_token=favorite_token,
                            favorite_ai_configured=ai_assistant.configured(),
+                           kakao_map_key=os.environ.get("KAKAO_MAP_JAVASCRIPT_KEY", "").strip(),
                            login_favorite_feedback=session.pop("login_favorite_feedback", None),
                            login_favorite_error=session.pop("login_favorite_error", None)), status
 
@@ -388,6 +389,8 @@ def admin():
     user = current_user()
     if not user:
         abort(401)
+    error = ""
+    status = 200
     try:
         token = session["access_token"]
         if not store.is_admin(token):
@@ -400,16 +403,26 @@ def admin():
                 abort(400)
             if not owner:
                 abort(403)
-            set_administrator(user, token, request.form.get("user_id", ""), action == "grant_admin")
-            return redirect(url_for(".admin", updated="1"), code=303)
+            target = request.form.get("user_id", "").strip()
+            if action == "grant_admin" and request.form.get("email") is not None:
+                email = request.form.get("email", "").strip()
+                if not (3 <= len(email) <= 254 and "@" in email and not any(c.isspace() for c in email)):
+                    error, status = "올바른 가입 이메일을 입력해 주세요.", 400
+                else:
+                    target = store.user_id_by_email(email)
+                    if not target:
+                        error, status = "가입된 계정을 찾지 못했습니다. 이메일을 확인해 주세요.", 404
+            if not error:
+                set_administrator(user, token, target, action == "grant_admin")
+                return redirect(url_for(".admin", updated="1"), code=303)
         logs = store.call("/rest/v1/parking_audit?select=created_at,actor_alias,action,outcome,result_count,provider_calls&order=created_at.desc&limit=100", token=token)
         changes = store.call("/rest/v1/parking_admin_activity?select=occurred_at,actor_id,parking_lot_id,operation&order=occurred_at.desc&limit=100", token=token)
         admins = store.call("/rest/v1/parking_admins?select=user_id&order=user_id.asc", token=token) if owner else []
     except store.SupabaseError:
         abort(503, "기록을 불러오지 못했습니다.")
-    return render_template("admin.html", logs=logs, changes=changes,
+    return render_template("admin.html", logs=logs, changes=changes, error=error,
                            form_token=form_token(), updated=request.args.get("updated") == "1",
-                           owner=owner, admins=admins, owner_id=user["id"])
+                           owner=owner, admins=admins, owner_id=user["id"]), status
 
 
 @parking_demo.post("/assistant")
@@ -547,11 +560,11 @@ def assistant():
                     reply = "로그아웃했어요." if user else "이미 로그아웃되어 있어요."
                     extra["navigate"] = url_for(".parking", from_chat="1")
             elif action in ("admin_grant", "admin_revoke"):
-                target = answer.get("user_id", "").strip()
+                target = (answer.get("email") or answer.get("user_id", "")).strip()
                 if not store.is_owner(session["access_token"]):
                     reply = "관리자 권한은 최고 관리자만 변경할 수 있어요."
                 elif not target or target.casefold() not in message.casefold():
-                    reply = "권한을 변경할 사용자의 ID를 메시지에 직접 적어 주세요."
+                    reply = "권한을 변경할 사용자의 가입 이메일을 메시지에 직접 적어 주세요."
                 elif re.search(r"(하지\s*마|하지\s*말|말고|취소|금지)", message) or not re.search(r"(관리자|admin)", message, re.I) or not re.search(r"(부여|추가|지정|줘|해제|회수|제거|삭제)", message):
                     reply = "관리자 권한을 부여할지 해제할지 명확히 말씀해 주세요."
                 elif action == "admin_grant" and re.search(r"(해제|회수|제거|삭제)", message):
@@ -559,6 +572,12 @@ def assistant():
                 elif action == "admin_revoke" and not re.search(r"(해제|회수|제거|삭제)", message):
                     reply = "관리자 권한 변경 요청을 다시 확인해 주세요."
                 else:
+                    if "@" in target:
+                        target = store.user_id_by_email(target)
+                        if not target:
+                            reply = "가입된 계정을 찾지 못했어요. 이메일을 확인해 주세요."
+                            session["assistant_history"] = (history + [{"role": "user", "text": message}, {"role": "model", "text": reply}])[-6:]
+                            return jsonify(message=reply, remaining=remaining)
                     try:
                         target = str(UUID(target))
                     except ValueError:

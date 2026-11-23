@@ -23,6 +23,7 @@ SYSTEM = """당신은 한국의 무료 주차장 검색을 돕는 친절한 대�
 theme은 dark 또는 light, navigate의 page는 home, login, signup, admin 중 하나입니다.
 지도 조작 direction은 in 또는 out, 서비스 안내 direction은 next, previous 또는 play입니다.
 관리자 권한 변경 시 user_id는 사용자가 메시지에 직접 쓴 UUID만 그대로 넣고 없으면 빈 문자열로 두세요.
+가입 이메일을 직접 적었다면 email에 그대로 넣고 없으면 빈 문자열로 두세요.
 비밀번호나 인증정보를 요청하지 말고 로그인이나 가입은 해당 화면으로 안내하세요.
 공공데이터 검색 결과를 아직 받은 적이 없으므로 주차장 이름, 주소, 거리, 이용 가능 여부를 만들어내지 마세요.
 reply에는 친절하고 짧은 한국어 답변을 담고, search일 때는 검색 예정이라는 간단한 말만 적으세요.
@@ -39,6 +40,7 @@ SCHEMA = {
         "theme": {"type": "string", "enum": ["dark", "light", ""]},
         "page": {"type": "string", "enum": ["home", "login", "signup", "admin", ""]},
         "user_id": {"type": "string"},
+        "email": {"type": "string"},
         "direction": {"type": "string", "enum": ["in", "out", "next", "previous", "play", ""]},
     },
     "required": ["action", "reply", "location", "place_type"],
@@ -92,8 +94,8 @@ def respond(message, history, places=None, authenticated=False):
             number = answer.get("number", 0)
             if type(number) is not int or not 0 <= number <= 200:
                 raise ValueError("Invalid selection")
-            result.update(number=number, target_name=answer.get("target_name", ""), theme=answer.get("theme", ""), page=answer.get("page", ""), user_id=answer.get("user_id", ""), direction=answer.get("direction", ""))
-            if any(not isinstance(result[key], str) or len(result[key]) > 200 for key in ("target_name", "theme", "page", "user_id", "direction")):
+            result.update(number=number, target_name=answer.get("target_name", ""), theme=answer.get("theme", ""), page=answer.get("page", ""), user_id=answer.get("user_id", ""), email=answer.get("email", ""), direction=answer.get("direction", ""))
+            if any(not isinstance(result[key], str) or len(result[key]) > 254 for key in ("target_name", "theme", "page", "user_id", "email", "direction")):
                 raise ValueError("Invalid action arguments")
         return result
     except HTTPError as error:
