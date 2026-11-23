@@ -111,6 +111,15 @@
     [data-theme="dark"] .map-shell { background: #21312e; }
     [data-theme="dark"] .leaflet-tile-pane { filter: brightness(.76) saturate(.7); }
     .service-guide { margin-top: 48px; }
+    .chat-box { margin-top: 28px; padding: 24px; border: 1px solid var(--line); border-radius: 20px; background: #fff; }
+    .chat-box h2 { margin: 0 0 8px; }
+    .chat-box p { margin: 8px 0; color: var(--muted); }
+    .chat-form { display: flex; gap: 8px; margin-top: 16px; }
+    .chat-form input { flex: 1; min-width: 0; }
+    .chat-response { margin-top: 15px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .chat-results { padding-left: 22px; }
+    .user-id { overflow-wrap: anywhere; font-size: 12px; }
+    [data-theme="dark"] .chat-box { background: #1a2b28; }
     .service-guide h2 { font-size: 22px; }
     .guide-intro, .guide-note { color: #697e85; margin-top: 8px; }
     .flow-card { margin-top: 20px; padding: 24px; border: 1px solid #d4e6dd; border-radius: 18px; background: #f1f8f4; }
@@ -213,6 +222,24 @@
       </section>
       <section class="map-shell" aria-label="주차장 지도"><div id="map"></div><p class="map-note" id="map-note">지도에서 위치를 확인하세요</p></section>
     </div>
+    <section class="chat-box" aria-labelledby="chat-heading">
+      <h2 id="chat-heading">가까운 주차장 추천</h2>
+      <p>위치를 문장으로 알려주면 가까운 무료 주차장을 찾아드려요. 정해진 표현을 해석하는 기능으로, AI 모델은 사용하지 않습니다.</p>
+      {% if alias %}
+      <p>관리자가 허용한 계정은 한국 시간 기준 하루 3회 이용할 수 있습니다. 검색을 시작하면 결과가 없거나 조회 오류가 나도 횟수가 차감됩니다.</p>
+      <p class="user-id">내 사용자 ID: <code>{{ user_id }}</code> · 권한이 필요하면 관리자에게 이 ID를 알려주세요.</p>
+      <form class="chat-form" id="chat-form" action="{{ url_for('parking_demo.assistant') }}" method="post">
+        <input type="hidden" name="form_token" value="{{ form_token }}">
+        <label for="chat-message" class="chat-label">위치</label>
+        <input id="chat-message" name="message" required maxlength="100" placeholder="예: 강남역 근처 무료 주차장">
+        <button type="submit" class="primary">추천받기</button>
+      </form>
+      <div id="chat-response" class="chat-response" role="status" aria-live="polite"></div>
+      <ol id="chat-results" class="chat-results"></ol>
+      {% else %}
+      <p><a href="{{ url_for('parking_demo.account', mode='login') }}">로그인</a> 후 관리자에게 이용 권한을 요청해 주세요.</p>
+      {% endif %}
+    </section>
     <section class="service-guide" aria-labelledby="service-guide-heading">
       <h2 id="service-guide-heading">무료주차장 찾기는 이렇게 연결돼요</h2>
       <p class="guide-intro">검색부터 지도 표시까지, 서비스가 동작하는 순서를 살펴보세요.</p>
@@ -246,6 +273,32 @@
   <footer>출처: 지방자치단체, <a href="https://www.data.go.kr/data/15012896/standard.do" target="_blank" rel="noopener noreferrer">전국주차장정보표준데이터</a> (공공데이터포털). 원본에서 무료 항목을 추려 표시합니다.</footer>
 </div>
 <script>
+  (() => {
+    const form = document.getElementById('chat-form');
+    if (!form) return;
+    const response = document.getElementById('chat-response');
+    const results = document.getElementById('chat-results');
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const button = form.querySelector('button');
+      button.disabled = true;
+      response.textContent = '주차장을 찾고 있어요…';
+      results.replaceChildren();
+      try {
+        const res = await fetch(form.action, {method: 'POST', body: new FormData(form)});
+        const data = await res.json().catch(() => ({}));
+        response.textContent = data.message || (res.status === 429 ? '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' : '요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+        if (Number.isInteger(data.remaining)) response.textContent += `\n오늘 남은 횟수: ${data.remaining}회`;
+        (data.places || []).forEach((place) => {
+          const item = document.createElement('li');
+          item.textContent = `${place.name} · ${place.distance_km}km · ${place.area}`;
+          results.appendChild(item);
+        });
+      } catch (error) {
+        response.textContent = '서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.';
+      } finally { button.disabled = false; }
+    });
+  })();
   (() => {
     const steps = Array.from(document.querySelectorAll('.flow-step'));
     const descriptions = [

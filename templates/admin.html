@@ -11,10 +11,28 @@
     table { border-collapse: collapse; width: 100%; text-align: left; }
     th, td { padding: 13px 16px; border-bottom: 1px solid #e6efea; white-space: nowrap; }
     th { font-size: 13px; color: #536d66; background: #f8fbf9; }
+    input { padding: 9px; width: min(26em, 90%); } button { padding: 9px 12px; cursor: pointer; }
   </style>
 </head>
 <body><main>
   <a href="{{ url_for('parking_demo.parking') }}">← 주차장 검색</a>
+  <h1>추천 챗봇 이용 권한</h1>
+  <p>가입한 사용자의 ID를 입력해 권한을 부여하세요. 관리자도 사용하려면 직접 권한을 부여해야 합니다. 허용된 계정은 한국 시간 기준 하루 3회 이용할 수 있습니다.</p>
+  {% if updated %}<p role="status">권한 설정을 저장했습니다.</p>{% endif %}
+  {% if chat_access is none %}<p role="alert">챗봇 권한 저장소를 사용할 수 없습니다. 데이터베이스 설정을 확인해 주세요.</p>{% else %}
+  <form method="post">
+    <input type="hidden" name="form_token" value="{{ form_token }}">
+    <label for="user-id">사용자 ID</label>
+    <input id="user-id" name="user_id" required maxlength="36" placeholder="사용자에게서 받은 ID">
+    <button name="action" value="grant_chat">권한 부여</button>
+  </form>
+  <div class="wrap"><table>
+    <thead><tr><th>사용자 ID</th><th>부여 시각 (UTC)</th><th>관리</th></tr></thead>
+    <tbody>{% for entry in chat_access %}<tr><td>{{ entry.user_id }}</td><td>{{ entry.granted_at }}</td><td>
+      <form method="post"><input type="hidden" name="form_token" value="{{ form_token }}"><input type="hidden" name="user_id" value="{{ entry.user_id }}"><button name="action" value="revoke_chat">권한 해제</button></form>
+    </td></tr>{% else %}<tr><td colspan="3">권한이 부여된 사용자가 없습니다.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
   <h1>활동 기록</h1><p>최근 100건</p>
   <div class="wrap"><table>
     <thead><tr><th>시각 (UTC)</th><th>계정 별칭</th><th>행동</th><th>판정</th><th>결과 수</th><th>제공자 호출</th></tr></thead>
