@@ -1,7 +1,11 @@
 """Parking search with Supabase authentication and administrator audit."""
 import secrets
+import hashlib
+import json
+import re
 from uuid import UUID
-from flask import Blueprint, abort, jsonify, redirect, render_template, request, session, url_for
+from flask import Blueprint, abort, current_app, jsonify, redirect, render_template, request, session, url_for
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 import ai_assistant
 from nearby import nearby_parking
@@ -11,6 +15,36 @@ import supabase_store as store
 
 parking_demo = Blueprint("parking_demo", __name__)
 PLACE_TYPES = {"all": "전체", "off_street": "노외 주차장", "on_street": "노상 주차장"}
+
+
+def place_serializer():
+    return URLSafeTimedSerializer(current_app.secret_key, salt="parking-favorite")
+
+
+def favorite_token(place):
+    return place_serializer().dumps({key: place[key] for key in ("name", "area", "lat", "lon")})
+
+
+def favorite_place(token):
+    try:
+        place = place_serializer().loads(token, max_age=3600)
+        if (not isinstance(place, dict) or not isinstance(place.get("name"), str)
+                or not 1 <= len(place["name"]) <= 200 or not isinstance(place.get("area"), str)
+                or not 1 <= len(place["area"]) <= 300 or not isinstance(place.get("lat"), (int, float))
+                or not isinstance(place.get("lon"), (int, float))
+                or not 33 <= place["lat"] <= 39 or not 124 <= place["lon"] <= 132):
+            raise ValueError()
+        return place
+    except (BadSignature, SignatureExpired, TypeError, ValueError):
+        abort(400, "검색 결과가 만료됐습니다. 다시 검색해 주세요.")
+
+
+def add_favorite(user, token, place):
+    key = hashlib.sha256(json.dumps([place["name"], place["area"], place["lat"], place["lon"]], ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
+    store.call("/rest/v1/parking_favorites?on_conflict=user_id,place_key", method="POST", token=token,
+               body={"user_id": user["id"], "place_key": key, **place},
+               prefer="resolution=ignore-duplicates,return=minimal")
+    return key
 
 
 def form_token():
@@ -146,7 +180,75 @@ def parking():
     return render_template("parking_demo.html", alias=user.get("email") if user else None,
                            user_id=user.get("id") if user else None,
                            admin=admin, values=values, place_types=PLACE_TYPES, results=results,
-                           center=center, message=message, form_token=form_token()), status
+                           center=center, message=message, form_token=form_token(), favorite_token=favorite_token,
+                           favorite_ai_configured=ai_assistant.configured()), status
+
+
+@parking_demo.route("/favorites", methods=["GET", "POST"])
+def favorites():
+    user = current_user()
+    if not user:
+        return jsonify(message="로그인 후 즐겨찾기를 사용할 수 있어요."), 401
+    token = session["access_token"]
+    try:
+        if request.method == "GET":
+            items = store.call("/rest/v1/parking_favorites?select=place_key,name,area,lat,lon,created_at&order=created_at.desc&limit=200", token=token)
+            return jsonify(favorites=items)
+        check_form_token()
+        action = request.form.get("action")
+        if action == "add":
+            place = favorite_place(request.form.get("place", ""))
+            add_favorite(user, token, place)
+            return jsonify(message=f"{place['name']}을(를) 즐겨찾기에 추가했습니다.")
+        if action == "delete":
+            key = request.form.get("place_key", "")
+            if not re.fullmatch(r"[0-9a-f]{64}", key):
+                abort(400)
+            store.call("/rest/v1/parking_favorites?place_key=eq." + key, method="DELETE", token=token, prefer="return=minimal")
+            return jsonify(message="즐겨찾기에서 삭제했습니다.")
+        abort(400)
+    except store.SupabaseError:
+        return jsonify(message="즐겨찾기를 저장하거나 불러오지 못했습니다."), 503
+
+
+@parking_demo.post("/favorites/command")
+def favorite_command():
+    check_form_token()
+    user = current_user()
+    if not user:
+        return jsonify(message="로그인 후 즐겨찾기를 사용할 수 있어요."), 401
+    command = request.form.get("command", "").strip()
+    tokens = request.form.getlist("place")
+    if not command or len(command) > 200 or not tokens or len(tokens) > 30:
+        return jsonify(message="검색 후 '1번 즐겨찾기 추가'처럼 입력해 주세요."), 400
+    places = [favorite_place(token) for token in tokens]
+    check_rate_limit("favorite_command", per_session=10, total=100)
+    mode = "모의 선택"
+    remaining = None
+    if ai_assistant.configured():
+        try:
+            remaining = store.call("/rest/v1/rpc/parking_use_chat", method="POST", admin=True, body={"p_user_id": user["id"]})
+        except store.SupabaseError:
+            return jsonify(message="AI 사용 권한을 확인하지 못했습니다."), 503
+        if type(remaining) is not int:
+            return jsonify(message="AI 사용 권한을 확인하지 못했습니다."), 503
+    if remaining is not None and remaining >= 0:
+        mode = "AI 선택"
+        try:
+            number = ai_assistant.select_favorite(command, places)
+        except ai_assistant.AssistantError as error:
+            return jsonify(message=str(error), mode=mode, remaining=remaining), 503
+    else:
+        match = re.fullmatch(r"\s*(\d{1,2})\s*번\s*(?:을|를)?\s*즐겨찾기(?:에)?\s*(?:추가|저장)(?:해\s*줘|해주세요)?\s*[.!]?\s*", command)
+        number = int(match.group(1)) if match else 0
+    if not 1 <= number <= len(places):
+        return jsonify(message="저장할 항목을 찾지 못했어요. 예: 1번 즐겨찾기 추가", mode=mode, remaining=remaining), 400
+    try:
+        place = places[number - 1]
+        add_favorite(user, session["access_token"], place)
+    except store.SupabaseError:
+        return jsonify(message="즐겨찾기를 저장하지 못했습니다.", mode=mode, remaining=remaining), 503
+    return jsonify(message=f"{place['name']}을(를) 즐겨찾기에 추가했습니다.", mode=mode, remaining=remaining)
 
 
 @parking_demo.route("/admin", methods=["GET", "POST"])

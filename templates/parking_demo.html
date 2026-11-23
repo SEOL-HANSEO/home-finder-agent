@@ -118,6 +118,16 @@
     .chat-form input { flex: 1; min-width: 0; }
     .chat-response { margin-top: 15px; white-space: pre-wrap; overflow-wrap: anywhere; }
     .chat-turn { margin: 10px 0; padding: 12px; border-radius: 10px; background: #f1f8f4; }
+    .favorite-action { margin: 0 24px 16px; color: #08745f; }
+    .favorite-box { margin-top: 28px; padding: 24px; border: 1px solid var(--line); border-radius: 20px; background: #fff; }
+    .favorite-box h2 { font-size: 18px; }
+    .favorite-box p { margin-top: 8px; color: var(--muted); font-size: 13px; }
+    .favorite-list { list-style: none; padding: 0; margin: 16px 0 0; }
+    .favorite-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+    .favorite-list small { display: block; color: var(--muted); }
+    .favorite-command { display: flex; gap: 8px; margin-top: 16px; }
+    .favorite-command input { flex: 1; min-width: 0; }
+    [data-theme="dark"] .favorite-box { background: #1a2b28; }
     [data-theme="dark"] .chat-turn { background: #25433a; }
     .chat-results { padding-left: 22px; }
     .user-id { overflow-wrap: anywhere; font-size: 12px; }
@@ -210,10 +220,12 @@
         {% if results %}
           <ul class="places">{% for place in results %}
             <li><button type="button" class="place" {% if place.lat is not none %}data-marker="{{ loop.index0 }}"{% else %}disabled{% endif %}>
-              <span class="place-heading"><strong>{{ place.name }}</strong><span class="free">무료</span></span>
+              <span class="place-heading"><strong>{{ loop.index }}. {{ place.name }}</strong><span class="free">무료</span></span>
               <small>{{ place.area }}</small>
               <small>{{ place_types.get(place.place_type, '기타') }} · {{ place.distance_km }}km{% if place.spaces %} · {{ place.spaces }}면{% endif %}{% if place.reference_date %} · 기준일 {{ place.reference_date }}{% endif %}{% if place.provider %} · 제공 {{ place.provider }}{% endif %}{% if place.lat is none %} · 위치 정보 없음{% endif %}</small>
-            </button></li>
+            </button>
+            {% if alias and place.lat is not none and place.lon is not none %}<button type="button" class="favorite-action" data-favorite-token="{{ favorite_token(place) }}">☆ 즐겨찾기 추가</button>{% endif %}
+            </li>
           {% endfor %}</ul>
         {% elif results is not none %}
           <div class="empty"><div class="empty-icon">P</div><strong>검색 결과가 없습니다</strong>다른 지역이나 주차장명으로 검색해 보세요.</div>
@@ -224,6 +236,23 @@
       </section>
       <section class="map-shell" aria-label="주차장 지도"><div id="map"></div><p class="map-note" id="map-note">지도에서 위치를 확인하세요</p></section>
     </div>
+    <section class="favorite-box" aria-labelledby="favorite-heading">
+      <h2 id="favorite-heading">★ 내 주차장 즐겨찾기</h2>
+      {% if alias %}
+      <p>검색 결과에서 별 버튼을 누르거나 아래에 한 줄로 요청해 주세요. 한 줄 요청은 검색 결과 앞 30곳에서 선택합니다.</p>
+      <p><strong id="favorite-mode">{{ 'AI 선택 또는 모의 선택' if favorite_ai_configured else '모의 선택' }}</strong> · AI 선택은 허용된 계정의 하루 3회 AI 사용 횟수를 차감하며 요청과 검색 결과를 Google에 보냅니다. AI를 사용할 수 없을 때는 ‘1번 즐겨찾기 추가’처럼 입력하세요.</p>
+      <form id="favorite-command" class="favorite-command" action="{{ url_for('parking_demo.favorite_command') }}" method="post">
+        <input type="hidden" name="form_token" value="{{ form_token }}">
+        <label for="favorite-request">한 줄 요청</label>
+        <input id="favorite-request" name="command" maxlength="200" required placeholder="예: 1번 즐겨찾기 추가">
+        <button type="submit" class="primary">실행</button>
+      </form>
+      <p id="favorite-status" role="status" aria-live="polite"></p>
+      <ul id="favorite-list" class="favorite-list"><li>즐겨찾기를 불러오는 중입니다.</li></ul>
+      {% else %}
+      <p><a href="{{ url_for('parking_demo.account', mode='login') }}">로그인</a>하면 즐겨찾기를 추가하고 목록을 확인할 수 있어요.</p>
+      {% endif %}
+    </section>
     <section class="chat-box" aria-labelledby="chat-heading">
       <h2 id="chat-heading">AI 주차장 도우미</h2>
       <p>위치나 원하는 조건을 편하게 말씀해 주세요. AI가 대화를 이해하고 공공데이터에서 가까운 무료 주차장을 찾아드려요.</p>
@@ -275,6 +304,75 @@
   <footer>출처: 지방자치단체, <a href="https://www.data.go.kr/data/15012896/standard.do" target="_blank" rel="noopener noreferrer">전국주차장정보표준데이터</a> (공공데이터포털). 원본에서 무료 항목을 추려 표시합니다.</footer>
 </div>
 <script>
+  (() => {
+    const list = document.getElementById('favorite-list');
+    if (!list) return;
+    const status = document.getElementById('favorite-status');
+    const mode = document.getElementById('favorite-mode');
+    const form = document.getElementById('favorite-command');
+    const endpoint = {{ url_for('parking_demo.favorites') | tojson }};
+    const csrf = form.querySelector('[name=form_token]').value;
+    async function request(url, body) {
+      const response = await fetch(url, body ? {method: 'POST', body} : {});
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) { const error = new Error(data.message || '요청을 처리하지 못했습니다.'); error.data = data; throw error; }
+      return data;
+    }
+    async function refresh() {
+      try {
+        const data = await request(endpoint);
+        list.replaceChildren();
+        if (!data.favorites.length) { const empty = document.createElement('li'); empty.textContent = '아직 즐겨찾기가 없습니다.'; list.appendChild(empty); }
+        data.favorites.forEach((place) => {
+          const item = document.createElement('li');
+          const info = document.createElement('span');
+          const name = document.createElement('strong'); name.textContent = place.name;
+          const address = document.createElement('small'); address.textContent = place.area;
+          info.append(name, address);
+          const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = '삭제';
+          remove.setAttribute('aria-label', `${place.name} 즐겨찾기 삭제`);
+          remove.addEventListener('click', async () => {
+            remove.disabled = true;
+            const body = new FormData(); body.set('form_token', csrf); body.set('action', 'delete'); body.set('place_key', place.place_key);
+            try { const result = await request(endpoint, body); status.textContent = result.message; await refresh(); }
+            catch (error) { status.textContent = error.message; remove.disabled = false; }
+          });
+          item.append(info, remove); list.appendChild(item);
+        });
+      } catch (error) { list.textContent = ''; status.textContent = error.message; }
+    }
+    document.querySelectorAll('[data-favorite-token]').forEach((button) => {
+      button.addEventListener('click', async () => {
+        button.disabled = true;
+        const body = new FormData(); body.set('form_token', csrf); body.set('action', 'add'); body.set('place', button.dataset.favoriteToken);
+        try { const result = await request(endpoint, body); status.textContent = result.message; await refresh(); }
+        catch (error) { status.textContent = error.message; }
+        finally { button.disabled = false; }
+      });
+    });
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const button = form.querySelector('button'); button.disabled = true; status.textContent = '요청을 처리하고 있습니다…';
+      const body = new FormData(form);
+      let totalSize = 0;
+      for (const item of Array.from(document.querySelectorAll('[data-favorite-token]')).slice(0, 30)) {
+        totalSize += item.dataset.favoriteToken.length + 120;
+        if (totalSize > 10000) break;
+        body.append('place', item.dataset.favoriteToken);
+      }
+      try {
+        const result = await request(form.action, body);
+        mode.textContent = result.mode;
+        status.textContent = result.message + (Number.isInteger(result.remaining) && result.remaining >= 0 ? ` · 오늘 남은 AI 횟수 ${result.remaining}회` : '');
+        await refresh();
+      } catch (error) {
+        if (error.data?.mode) mode.textContent = error.data.mode;
+        status.textContent = error.message + (Number.isInteger(error.data?.remaining) && error.data.remaining >= 0 ? ` · 오늘 남은 AI 횟수 ${error.data.remaining}회` : '');
+      }
+      finally { button.disabled = false; }
+    });
+    refresh();
+  })();
   (() => {
     const form = document.getElementById('chat-form');
     if (!form) return;

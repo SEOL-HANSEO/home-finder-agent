@@ -74,3 +74,29 @@ def respond(message, history):
         raise AssistantError("AI 서비스에 연결하지 못했습니다. 관리자에게 설정을 확인해 달라고 요청해 주세요.") from None
     except (URLError, OSError, TimeoutError, ValueError, KeyError, IndexError, TypeError):
         raise AssistantError("AI 응답을 받지 못했습니다. 잠시 후 다시 시도해 주세요.") from None
+
+
+def select_favorite(message, places):
+    """Choose an existing result only; zero means no unambiguous add request."""
+    if not configured():
+        raise AssistantError("AI 서비스가 아직 설정되지 않았습니다.")
+    choices = [{"number": i + 1, "name": p["name"], "area": p["area"]} for i, p in enumerate(places)]
+    payload = {
+        "systemInstruction": {"parts": [{"text": "사용자의 요청이 목록의 주차장 하나를 즐겨찾기에 추가하는 뜻일 때만 해당 번호를 반환하세요. 그 외, 삭제 요청, 모호한 요청은 0을 반환하세요. 목록에 없는 장소를 만들지 마세요."}]},
+        "contents": [{"role": "user", "parts": [{"text": json.dumps({"request": message, "places": choices}, ensure_ascii=False)}]}],
+        "generationConfig": {"responseMimeType": "application/json", "responseJsonSchema": {"type": "object", "properties": {"number": {"type": "integer"}}, "required": ["number"]}, "maxOutputTokens": 512},
+    }
+    req = Request(URL, data=json.dumps(payload, ensure_ascii=False).encode(), headers={"Content-Type": "application/json", "x-goog-api-key": setting("GEMINI_API_KEY")}, method="POST")
+    try:
+        with urlopen(req, timeout=25) as response:
+            data = json.load(response)
+        candidate = data["candidates"][0]
+        if candidate.get("finishReason") != "STOP":
+            raise ValueError("Incomplete response")
+        result = json.loads("".join(part.get("text", "") for part in candidate["content"]["parts"] if not part.get("thought")))
+        number = result["number"]
+        if type(number) is not int or not 0 <= number <= len(places):
+            raise ValueError("Invalid selection")
+        return number
+    except (HTTPError, URLError, OSError, TimeoutError, ValueError, KeyError, IndexError, TypeError):
+        raise AssistantError("AI 선택을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.") from None
