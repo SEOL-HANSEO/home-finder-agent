@@ -452,11 +452,34 @@ def admin():
             "failure": sum(1 for item in logs if item.get("action") == "search" and item.get("outcome") == "failure"),
         }
         admins = store.call("/rest/v1/parking_admins?select=user_id&order=user_id.asc", token=token) if owner else []
+        report = session.get("admin_ai_report") or {}
+        report_run = session.get("admin_ai_report_run") or {}
+        now = datetime.now(timezone.utc)
+        if logs and (now.timestamp() - report_run.get("timestamp", 0) >= 3600):
+            stats = {"activity_records": len(logs), "search_success": search_summary["success"],
+                     "search_failure": search_summary["failure"], "favorite_records": len(favorite_records),
+                     "favorite_places_in_top_list": len(favorite_ranking), "security_reports": len(security_reports),
+                     "security_high": sum(1 for item in security_reports if item.get("severity") == "high"),
+                     "chat_safety_blocks": sum(1 for item in security_reports if item.get("rule") == "chat_safety_block"),
+                     "parking_changes": len(changes), "activity_limit": 100, "security_limit": 50,
+                     "favorite_limit": 1000, "change_limit": 100}
+            try:
+                if consume_ai_quota(user) < 0:
+                    raise ai_assistant.AssistantError("AI 이용 한도에 도달했습니다.")
+                report = {"text": ai_assistant.admin_report(stats), "timestamp": now.timestamp(),
+                          "created_at": now.strftime("%Y-%m-%d %H:%M UTC")}
+                session["admin_ai_report"] = report
+                report_run = {"status": "성공", "timestamp": now.timestamp(), "created_at": report["created_at"], "reason": ""}
+            except (ai_assistant.AssistantError, store.SupabaseError) as error:
+                report_run = {"status": "실패", "timestamp": now.timestamp(),
+                              "created_at": now.strftime("%Y-%m-%d %H:%M UTC"),
+                              "reason": str(error) if isinstance(error, ai_assistant.AssistantError) else "이용 한도 확인에 실패했습니다."}
+            session["admin_ai_report_run"] = report_run
     except store.SupabaseError:
         abort(503, "기록을 불러오지 못했습니다.")
     return render_template("admin.html", logs=logs, changes=changes, error=error,
                            favorite_ranking=favorite_ranking, search_summary=search_summary,
-                           security_reports=security_reports,
+                           security_reports=security_reports, admin_ai_report=report, admin_ai_report_run=report_run,
                            form_token=form_token(), updated=request.args.get("updated") == "1",
                            owner=owner, admins=admins, owner_id=user["id"]), status
 

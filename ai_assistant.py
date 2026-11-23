@@ -64,6 +64,31 @@ def configured():
     return bool(setting("GEMINI_API_KEY")) and setting("GEMINI_FREE_TIER_CONFIRMED").lower() == "true"
 
 
+def admin_report(stats):
+    """Summarize aggregate statistics without sending individual activity records."""
+    if not configured():
+        raise AssistantError("AI 보고서 서비스를 사용할 수 없습니다.")
+    payload = {
+        "systemInstruction": {"parts": [{"text": "관리자용 운영 보고서를 한국어로 간결하게 작성하세요. 제공된 집계만 근거로 검색 현황, 보안 신호, 확인할 일을 설명하세요. 공격이나 원인을 단정하거나 없는 수치와 추세를 만들지 마세요. 집계는 전체가 아닌 최근 기록의 일부입니다."}]},
+        "contents": [{"role": "user", "parts": [{"text": json.dumps(stats, ensure_ascii=False)}]}],
+        "generationConfig": {"maxOutputTokens": 800},
+    }
+    req = Request(URL, data=json.dumps(payload, ensure_ascii=False).encode(),
+                  headers={"Content-Type": "application/json", "x-goog-api-key": setting("GEMINI_API_KEY")}, method="POST")
+    try:
+        with urlopen(req, timeout=20) as response:
+            data = json.load(response)
+        candidate = data["candidates"][0]
+        if candidate.get("finishReason") != "STOP":
+            raise ValueError("Incomplete response")
+        result = "".join(p.get("text", "") for p in candidate["content"]["parts"] if not p.get("thought")).strip()
+        if not result:
+            raise ValueError("Empty response")
+        return result[:3000]
+    except (HTTPError, URLError, OSError, TimeoutError, ValueError, KeyError, IndexError, TypeError):
+        raise AssistantError("AI 보고서를 만들지 못했습니다. 잠시 후 다시 확인해 주세요.") from None
+
+
 def respond(message, history, places=None, authenticated=False):
     if not configured():
         raise AssistantError("AI 서비스가 아직 설정되지 않았습니다. 관리자에게 문의해 주세요.")

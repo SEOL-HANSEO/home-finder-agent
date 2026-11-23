@@ -25,6 +25,14 @@ class FakeResponse:
 class GeminiTests(unittest.TestCase):
     @patch("ai_assistant.setting", side_effect=settings)
     @patch("ai_assistant.urlopen")
+    def test_admin_report_sends_only_supplied_aggregate_counts(self, urlopen, setting):
+        urlopen.return_value = FakeResponse({"candidates": [{"finishReason": "STOP", "content": {"parts": [{"text": "검색 현황을 확인하세요."}]}}]})
+        self.assertEqual(ai_assistant.admin_report({"search_success": 2, "search_failure": 1}), "검색 현황을 확인하세요.")
+        payload = json.loads(urlopen.call_args.args[0].data)
+        self.assertEqual(json.loads(payload["contents"][0]["parts"][0]["text"]), {"search_success": 2, "search_failure": 1})
+
+    @patch("ai_assistant.setting", side_effect=settings)
+    @patch("ai_assistant.urlopen")
     def test_model_response_and_history_are_sent_to_fixed_model(self, urlopen, setting):
         model_answer = {"action": "search", "reply": "찾아볼게요.", "location": "서울역", "place_type": "on_street"}
         urlopen.return_value = FakeResponse({"candidates": [{"finishReason": "STOP", "content": {"parts": [{"text": json.dumps(model_answer)}]}}]})
