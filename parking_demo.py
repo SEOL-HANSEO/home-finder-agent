@@ -428,10 +428,24 @@ def admin():
                 return redirect(url_for(".admin", updated="1"), code=303)
         logs = store.call("/rest/v1/parking_audit?select=created_at,actor_alias,action,outcome,result_count,provider_calls&order=created_at.desc&limit=100", token=token)
         changes = store.call("/rest/v1/parking_admin_activity?select=occurred_at,actor_id,parking_lot_id,operation&order=occurred_at.desc&limit=100", token=token)
+        favorite_records = store.call("/rest/v1/parking_favorites?select=name,area,created_at&order=created_at.desc&limit=1000", admin=True)
+        favorite_totals = {}
+        for item in favorite_records:
+            key = (item.get("name", ""), item.get("area", ""))
+            if not all(key):
+                continue
+            entry = favorite_totals.setdefault(key, {"name": key[0], "area": key[1], "count": 0, "latest": item.get("created_at", "")})
+            entry["count"] += 1
+        favorite_ranking = sorted(favorite_totals.values(), key=lambda item: item["count"], reverse=True)[:10]
+        search_summary = {
+            "success": sum(1 for item in logs if item.get("action") == "search" and item.get("outcome") == "success"),
+            "failure": sum(1 for item in logs if item.get("action") == "search" and item.get("outcome") == "failure"),
+        }
         admins = store.call("/rest/v1/parking_admins?select=user_id&order=user_id.asc", token=token) if owner else []
     except store.SupabaseError:
         abort(503, "기록을 불러오지 못했습니다.")
     return render_template("admin.html", logs=logs, changes=changes, error=error,
+                           favorite_ranking=favorite_ranking, search_summary=search_summary,
                            form_token=form_token(), updated=request.args.get("updated") == "1",
                            owner=owner, admins=admins, owner_id=user["id"]), status
 

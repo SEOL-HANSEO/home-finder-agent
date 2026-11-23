@@ -42,6 +42,13 @@
   {% endif %}
   {% if updated %}<p role="status">권한 설정을 저장했습니다.</p>{% endif %}
   <p>AI 챗봇은 비로그인 하루 3회, 로그인 회원 하루 5회이며 관리자는 전체 AI 이용 한도 내에서 무제한으로 사용할 수 있습니다.</p>
+  <h2>최근 검색 요약</h2>
+  <p>현재 보이는 최근 100개 활동 기록 중 검색 성공 {{ search_summary.success }}건, 실패 {{ search_summary.failure }}건입니다. 검색한 지역명은 기록에 저장되지 않습니다.</p>
+  <h2>즐겨찾기 순위</h2><p>최근 저장된 최대 1,000개 즐겨찾기를 주차장 이름과 주소별로 집계했습니다.</p>
+  <div class="wrap"><table>
+    <thead><tr><th>순위</th><th>주차장</th><th>주소</th><th>저장 수</th><th>최근 저장 시각 (UTC)</th></tr></thead>
+    <tbody>{% for item in favorite_ranking %}<tr><td>{{ loop.index }}</td><td>{{ item.name }}</td><td>{{ item.area }}</td><td>{{ item.count }}</td><td>{{ item.latest }}</td></tr>{% else %}<tr><td colspan="5">즐겨찾기 기록이 없습니다.</td></tr>{% endfor %}</tbody>
+  </table></div>
   <h1>활동 기록</h1><p>최근 100건</p>
   <div class="wrap"><table>
     <thead><tr><th>시각 (UTC)</th><th>계정 별칭</th><th>행동</th><th>판정</th><th>결과 수</th><th>제공자 호출</th></tr></thead>
