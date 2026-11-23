@@ -14,6 +14,7 @@ import ai_assistant
 from nearby import nearby_parking
 from parking_provider import ParkingProviderError, provider_calls
 from rate_limit import check_rate_limit
+import security_agent
 import supabase_store as store
 
 parking_demo = Blueprint("parking_demo", __name__)
@@ -427,6 +428,14 @@ def admin():
                 set_administrator(user, token, target, action == "grant_admin")
                 return redirect(url_for(".admin", updated="1"), code=303)
         logs = store.call("/rest/v1/parking_audit?select=created_at,actor_alias,action,outcome,result_count,provider_calls&order=created_at.desc&limit=100", token=token)
+        findings = security_agent.analyze(logs)
+        for finding in findings:
+            try:
+                store.call("/rest/v1/parking_security_reports?on_conflict=fingerprint", method="POST", admin=True,
+                           body=finding, prefer="resolution=ignore-duplicates,return=minimal")
+            except store.SupabaseError:
+                current_app.logger.warning("보안 분석 기록 저장에 실패했습니다.")
+        security_reports = store.call("/rest/v1/parking_security_reports?select=recorded_at,observed_at,actor_alias,severity,rule,summary&order=recorded_at.desc&limit=50", admin=True)
         changes = store.call("/rest/v1/parking_admin_activity?select=occurred_at,actor_id,parking_lot_id,operation&order=occurred_at.desc&limit=100", token=token)
         favorite_records = store.call("/rest/v1/parking_favorites?select=name,area,created_at&order=created_at.desc&limit=1000", admin=True)
         favorite_totals = {}
@@ -446,6 +455,7 @@ def admin():
         abort(503, "기록을 불러오지 못했습니다.")
     return render_template("admin.html", logs=logs, changes=changes, error=error,
                            favorite_ranking=favorite_ranking, search_summary=search_summary,
+                           security_reports=security_reports,
                            form_token=form_token(), updated=request.args.get("updated") == "1",
                            owner=owner, admins=admins, owner_id=user["id"]), status
 
