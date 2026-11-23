@@ -42,8 +42,12 @@
   const log = document.getElementById('floating-chat-log');
   const form = document.getElementById('floating-chat-form');
   const storageKey = 'parking-chat-v1';
+  const loginFavorite = {{ login_favorite_feedback | default(none) | tojson }};
+  const loginFavoriteError = {{ login_favorite_error | default(none) | tojson }};
   let state = {open: false, messages: []};
   try { const saved = JSON.parse(sessionStorage.getItem(storageKey) || 'null'); if (saved && Array.isArray(saved.messages)) state = {open: !!saved.open, messages: saved.messages.slice(-16)}; } catch (_) {}
+  if (loginFavorite) { state.open = true; state.messages.push({role: 'assistant', text: `${loginFavorite.place_name} · 첫 결과: ${loginFavorite.result_label} · 선택한 행동: ${loginFavorite.next_action}`}); }
+  if (loginFavoriteError) { state.open = true; state.messages.push({role: 'assistant', text: loginFavoriteError}); }
   function save() { try { sessionStorage.setItem(storageKey, JSON.stringify(state)); } catch (_) {} }
   function render() {
     windowEl.hidden = !state.open;
@@ -107,6 +111,7 @@
   });
   window.addEventListener('DOMContentLoaded', () => {
     if (!document.getElementById('results-body')) return;
+    if (loginFavorite) window.dispatchEvent(new CustomEvent('parking:favorites', {detail: loginFavorite}));
     try {
       const pending = JSON.parse(sessionStorage.getItem('parking-pending-operation') || 'null');
       sessionStorage.removeItem('parking-pending-operation');

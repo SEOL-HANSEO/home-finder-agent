@@ -204,6 +204,7 @@ def account(mode):
                 if token:
                     user = store.get_user(token)
                     history, search = session.get("assistant_history", []), session.get("search_view")
+                    pending = session.get("pending_favorite")
                     session.clear()
                     session.rotate()
                     session["access_token"] = token
@@ -211,8 +212,14 @@ def account(mode):
                         session["assistant_history"] = history
                     if search:
                         session["search_view"] = search
+                    if pending:
+                        try:
+                            outcome = add_favorite(user, token, pending)
+                            session["login_favorite_feedback"] = favorite_feedback(pending, outcome)
+                        except store.SupabaseError:
+                            session["login_favorite_error"] = "로그인은 완료됐지만 찜 저장에 실패했어요. 다시 시도해 주세요."
                     store.record(user["id"], mode, "success")
-                    return redirect(url_for(".parking"), code=303)
+                    return redirect(url_for(".parking", from_chat="1") if search else url_for(".parking"), code=303)
                 if mode == "signup":
                     store.record(None, "signup", "success")
                     notice = "가입 확인 이메일을 확인한 뒤 로그인해 주세요."
@@ -297,7 +304,9 @@ def parking():
                            user_id=user.get("id") if user else None,
                            admin=admin, values=values, place_types=PLACE_TYPES, results=results,
                            center=center, message=message, form_token=form_token(), favorite_token=favorite_token,
-                           favorite_ai_configured=ai_assistant.configured()), status
+                           favorite_ai_configured=ai_assistant.configured(),
+                           login_favorite_feedback=session.pop("login_favorite_feedback", None),
+                           login_favorite_error=session.pop("login_favorite_error", None)), status
 
 
 @parking_demo.route("/favorites", methods=["GET", "POST"])
@@ -426,7 +435,7 @@ def assistant():
         context_places = previous_view.get("places", [])
         if not user:
             context_places = context_places[:5]
-        answer = ai_assistant.respond(message, history, context_places)
+        answer = ai_assistant.respond(message, history, context_places, authenticated=bool(user))
     except ai_assistant.AssistantError as error:
         return jsonify(message=str(error), remaining=remaining), 503
     if answer["action"] == "reply":
@@ -437,7 +446,17 @@ def assistant():
         action = answer["action"]
         extra = {}
         try:
-            if action in ("favorite_add", "favorite_remove", "favorite_view", "save_preferences", "admin_grant", "admin_revoke") and not user:
+            if action == "favorite_add" and not user:
+                place = select_place(context_places, answer.get("number", 0), answer.get("target_name", ""), default_first=True)
+                if not place:
+                    reply = "먼저 주차장을 검색하고 찜할 장소를 알려주세요."
+                elif re.search(r"(하지\s*마|하지\s*말|말고|취소)", message):
+                    reply = "즐겨찾기를 추가하지 않았어요."
+                else:
+                    session["pending_favorite"] = {key: place[key] for key in ("name", "area", "lat", "lon")}
+                    reply = f"{place['name']}은 로그인하면 자동으로 찜할게요."
+                    extra["navigate"] = url_for(".account", mode="login")
+            elif action in ("favorite_remove", "favorite_view", "save_preferences", "admin_grant", "admin_revoke") and not user:
                 reply = "이 기능은 로그인 후 사용할 수 있어요. 로그인한 뒤 다시 말씀해 주세요."
             elif action == "favorite_add":
                 places = previous_view.get("places", [])
@@ -511,7 +530,9 @@ def assistant():
                 reply = "주차장 데이터 출처를 열 수 있는 링크예요."
             elif action == "navigate":
                 page = answer.get("page")
-                if page == "admin" and (not user or not store.is_admin(session["access_token"])):
+                if page == "login" and user:
+                    reply = "이미 로그인되어 있어요. 원하시는 기능을 말씀해 주세요."
+                elif page == "admin" and (not user or not store.is_admin(session["access_token"])):
                     reply = "관리자 화면은 관리자 계정으로 로그인해야 열 수 있어요."
                 elif page in ("home", "login", "signup", "admin"):
                     extra["navigate"] = (url_for(".parking", from_chat="1") if page == "home" else

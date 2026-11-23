@@ -225,9 +225,40 @@ class AssistantTests(unittest.TestCase):
     @patch("parking_demo.ai_assistant.respond", return_value={"action": "favorite_add", "number": 1, "target_name": ""})
     @patch("parking_demo.store.call", return_value=2)
     def test_guest_cannot_add_favorites(self, call, ai, add):
+        with self.client.session_transaction() as session:
+            session["search_view"] = {"location": "울산", "place_type": "all", "center": [35.54, 129.31], "places": [{"name": "울산 주차장", "area": "울산", "lat": 35.54, "lon": 129.31}]}
         result = self.request_chat("즐겨찾기에 추가해줘")
         self.assertIn("로그인", result.json["message"])
+        self.assertEqual(result.json["navigate"], "/account/login")
         add.assert_not_called()
+
+    @patch("parking_demo.store.record")
+    @patch("parking_demo.add_favorite", return_value={"place_key": "a" * 64, "result": "added"})
+    @patch("parking_demo.store.get_user", return_value=USER)
+    @patch("parking_demo.ai_assistant.respond", return_value={"action": "favorite_add", "number": 1, "target_name": ""})
+    @patch("parking_demo.store.call")
+    def test_guest_favorite_completes_after_login(self, call, ai, get_user, add, record):
+        place = {"name": "울산 주차장", "area": "울산", "lat": 35.54, "lon": 129.31}
+        with self.client.session_transaction() as session:
+            session["search_view"] = {"location": "울산", "place_type": "all", "center": [35.54, 129.31], "places": [place]}
+        call.return_value = 2
+        self.assertEqual(self.request_chat("즐겨찾기해줘").json["navigate"], "/account/login")
+        call.return_value = {"access_token": "new-token"}
+        response = self.client.post("/account/login", data={"form_token": "test-token", "username": "test@example.com", "password": "password123"})
+        self.assertEqual(response.status_code, 303)
+        self.assertIn("from_chat=1", response.location)
+        add.assert_called_once_with(USER, "new-token", place)
+        with self.client.session_transaction() as session:
+            self.assertEqual(session["login_favorite_feedback"]["result"], "added")
+
+    @patch("parking_demo.ai_assistant.respond", return_value={"action": "navigate", "page": "login"})
+    @patch("parking_demo.store.get_user", return_value=USER)
+    @patch("parking_demo.store.call", return_value=2)
+    def test_logged_in_user_is_not_sent_back_to_login(self, call, get_user, ai):
+        self.login()
+        response = self.request_chat("로그인했어")
+        self.assertNotIn("navigate", response.json)
+        self.assertIn("이미 로그인", response.json["message"])
 
     @patch("parking_demo.ai_assistant.respond", return_value={"action": "favorite_remove", "number": 1, "target_name": ""})
     @patch("parking_demo.store.get_user", return_value=USER)

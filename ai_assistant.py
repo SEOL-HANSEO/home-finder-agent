@@ -54,7 +54,7 @@ def configured():
     return bool(setting("GEMINI_API_KEY")) and setting("GEMINI_FREE_TIER_CONFIRMED").lower() == "true"
 
 
-def respond(message, history, places=None):
+def respond(message, history, places=None, authenticated=False):
     if not configured():
         raise AssistantError("AI 서비스가 아직 설정되지 않았습니다. 관리자에게 문의해 주세요.")
     contents = []
@@ -62,7 +62,7 @@ def respond(message, history, places=None):
         if isinstance(entry, dict) and entry.get("role") in ("user", "model") and isinstance(entry.get("text"), str):
             contents.append({"role": entry["role"], "parts": [{"text": entry["text"][:500]}]})
     current = [{"number": i + 1, "name": p.get("name", ""), "area": p.get("area", "")} for i, p in enumerate((places or [])[:30])]
-    contents.append({"role": "user", "parts": [{"text": json.dumps({"message": message, "current_search_results": current}, ensure_ascii=False)}]})
+    contents.append({"role": "user", "parts": [{"text": json.dumps({"message": message, "authenticated": authenticated, "current_search_results": current}, ensure_ascii=False)}]})
     payload = {
         "systemInstruction": {"parts": [{"text": SYSTEM}]},
         "contents": contents,
