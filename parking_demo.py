@@ -93,19 +93,19 @@ def select_place(items, number=0, name="", default_first=False):
         normalized = "".join(name.split()).casefold()
         matches = [p for p in items if normalized in "".join(p.get("name", "").split()).casefold()]
         return matches[0] if len(matches) == 1 else None
-    if 1 <= number <= len(items):
-        return items[number - 1]
+    if number:
+        return items[number - 1] if 1 <= number <= len(items) else None
     return items[0] if items and (default_first or len(items) == 1) else None
 
 
 def explicit_removal_reference(message, number, name):
     """Avoid deleting a guessed favorite when the user did not identify it."""
     compact = "".join(message.split()).casefold()
-    if re.search(r"(하지마|하지말|하지않|말아|말고|취소)", compact):
+    if re.search(r"(하지마|하지말|하지않|말아|말고)", compact):
         return False
     if name and "".join(name.split()).casefold() in compact:
         return True
-    if number and (re.search(rf"(?<!\d){number}\s*번", message) or
+    if number and (compact == str(number) or re.search(rf"(?<!\d){number}\s*번", message) or
                    (number == 1 and re.search(r"첫\s*번|첫째", message)) or
                    (number == 2 and re.search(r"두\s*번|둘째", message)) or
                    (number == 3 and re.search(r"세\s*번|셋째", message))):
@@ -494,10 +494,15 @@ def assistant():
             elif action == "favorite_remove":
                 items = store.call("/rest/v1/parking_favorites?select=place_key,name,area,lat,lon,created_at&order=created_at.desc&limit=200", token=session["access_token"])
                 number, name = answer.get("number", 0), answer.get("target_name", "")
-                place = (select_place(items, number, name) if explicit_removal_reference(message, number, name)
-                         else items[0] if len(items) == 1 and re.search(r"(즐겨찾기|저장).*(삭제|제거|지워)", message) and not re.search(r"(하지\s*마|하지\s*말|말고|취소)", message) else None)
-                if not place:
-                    reply = "삭제할 즐겨찾기의 이름이나 목록 번호를 알려주세요."
+                negated = re.search(r"(하지\s*(마|말|않)|말아|말고|하지는\s*마)", message)
+                if negated:
+                    reply = "즐겨찾기를 그대로 두었어요."
+                elif not items:
+                    reply = "해제할 즐겨찾기가 없어요."
+                elif not (place := (select_place(items, number, name) if explicit_removal_reference(message, number, name)
+                                    else items[0] if len(items) == 1 and not number and not name else None)):
+                    reply = "어느 즐겨찾기를 해제할까요? 번호나 이름을 알려주세요.\n" + "\n".join(
+                        f"{i}. {item['name']}" for i, item in enumerate(items[:20], 1))
                 else:
                     store.call("/rest/v1/parking_favorites?place_key=eq." + place["place_key"], method="DELETE", token=session["access_token"], prefer="return=minimal")
                     reply = f"{place['name']}을(를) 즐겨찾기에서 삭제했어요."
