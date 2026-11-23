@@ -206,7 +206,7 @@ class AssistantTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'id="floating-chat-form"', response.data)
 
-    @patch("parking_demo.add_favorite")
+    @patch("parking_demo.add_favorite", return_value={"place_key": "a" * 64, "result": "added"})
     @patch("parking_demo.ai_assistant.respond", return_value={"action": "favorite_add", "number": 1, "target_name": ""})
     @patch("parking_demo.store.get_user", return_value=USER)
     @patch("parking_demo.store.call", return_value=2)
@@ -218,9 +218,10 @@ class AssistantTests(unittest.TestCase):
         result = self.request_chat("첫 번째 즐겨찾기해줘")
         self.assertEqual(result.status_code, 200)
         self.assertTrue(result.json["favorites_changed"])
+        self.assertEqual(result.json["favorite_feedback"]["next_action"], "즐겨찾기 목록 열기")
         add.assert_called_once_with(USER, "test-access-token", {k: place[k] for k in ("name", "area", "lat", "lon")})
 
-    @patch("parking_demo.add_favorite")
+    @patch("parking_demo.add_favorite", return_value={"place_key": "a" * 64, "result": "already_saved"})
     @patch("parking_demo.ai_assistant.respond", return_value={"action": "favorite_add", "number": 1, "target_name": ""})
     @patch("parking_demo.store.call", return_value=2)
     def test_guest_cannot_add_favorites(self, call, ai, add):
@@ -290,7 +291,7 @@ class AssistantTests(unittest.TestCase):
         self.assertEqual(result.status_code, 200)
         self.assertIn('value="울산"'.encode(), result.data)
 
-    @patch("parking_demo.add_favorite")
+    @patch("parking_demo.add_favorite", return_value={"place_key": "a" * 64, "result": "already_saved"})
     @patch("parking_demo.store.record")
     @patch("parking_demo.nearby_parking")
     @patch("parking_demo.ai_assistant.respond")
@@ -307,6 +308,7 @@ class AssistantTests(unittest.TestCase):
         self.assertIn("favorite_token", search.json["search"]["places"][0])
         favorite = self.request_chat("첫 번째 즐겨찾기해줘")
         self.assertTrue(favorite.json["favorites_changed"])
+        self.assertEqual(favorite.json["favorite_feedback"]["next_action"], "기존 항목 찾아 표시")
         add.assert_called_once_with(USER, "test-access-token", {k: place[k] for k in ("name", "area", "lat", "lon")})
 
     @patch("parking_demo.ai_assistant.respond", return_value={"action": "map_select", "number": 2, "target_name": ""})

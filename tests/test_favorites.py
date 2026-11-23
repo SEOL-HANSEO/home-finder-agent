@@ -1,5 +1,7 @@
 import tempfile
 import unittest
+import hashlib
+import json
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,6 +12,7 @@ from server_session import SQLiteSessionInterface
 
 USER = {"id": "00000000-0000-0000-0000-000000000001", "email": "user@example.com"}
 PLACE = {"name": "서울역 주차장", "area": "서울", "lat": 37.55, "lon": 126.97}
+PLACE_KEY = hashlib.sha256(json.dumps([PLACE["name"], PLACE["area"], PLACE["lat"], PLACE["lon"]], ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
 
 
 class FavoriteTests(unittest.TestCase):
@@ -32,12 +35,16 @@ class FavoriteTests(unittest.TestCase):
     @patch("parking_demo.store.get_user", return_value=USER)
     @patch("parking_demo.store.call")
     def test_button_and_mock_command_save_same_place(self, call, get_user, configured):
+        call.side_effect = [[{"place_key": PLACE_KEY}], []]
         button = self.client.post("/favorites", data={"form_token": "csrf", "action": "add", "place": self.place_token})
         self.assertEqual(button.status_code, 200)
+        self.assertEqual((button.json["result"], button.json["next_action"]), ("added", "즐겨찾기 목록 열기"))
+        self.assertEqual(button.json["choice_mode"], "모의 선택")
         first = call.call_args.kwargs
         command = self.client.post("/favorites/command", data={"form_token": "csrf", "command": "1번 즐겨찾기 추가", "place": self.place_token})
         self.assertEqual(command.status_code, 200)
         self.assertEqual(command.json["mode"], "모의 선택")
+        self.assertEqual((command.json["result"], command.json["next_action"]), ("already_saved", "기존 항목 찾아 표시"))
         self.assertEqual(first, call.call_args.kwargs)
 
     @patch("parking_demo.ai_assistant.select_favorite", return_value=1)
@@ -46,11 +53,26 @@ class FavoriteTests(unittest.TestCase):
     @patch("parking_demo.store.get_user", return_value=USER)
     @patch("parking_demo.store.call")
     def test_ai_command_uses_quota_and_same_save(self, call, get_user, is_admin, configured, select):
-        call.side_effect = [2, None]
+        call.side_effect = [2, [{"place_key": PLACE_KEY}]]
         result = self.client.post("/favorites/command", data={"form_token": "csrf", "command": "서울역 주차장을 저장해", "place": self.place_token})
         self.assertEqual(result.status_code, 200)
         self.assertEqual((result.json["mode"], result.json["remaining"]), ("AI 선택", 2))
         self.assertEqual(call.call_args.kwargs["body"]["name"], PLACE["name"])
+
+    @patch("parking_demo.store.get_user", return_value=USER)
+    @patch("parking_demo.store.call", return_value=None)
+    def test_unknown_write_result_does_not_claim_success(self, call, get_user):
+        result = self.client.post("/favorites", data={"form_token": "csrf", "action": "add", "place": self.place_token})
+        self.assertEqual(result.status_code, 503)
+        self.assertNotIn("result", result.json)
+
+    @patch("parking_demo.store.get_user", return_value=USER)
+    @patch("parking_demo.store.call")
+    def test_focus_can_include_an_older_favorite(self, call, get_user):
+        call.side_effect = [[{"place_key": "b" * 64}], [{"place_key": PLACE_KEY, "name": PLACE["name"]}]]
+        result = self.client.get("/favorites?focus=" + PLACE_KEY)
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.json["favorites"][0]["place_key"], PLACE_KEY)
 
     @patch("parking_demo.ai_assistant.configured", return_value=False)
     @patch("parking_demo.store.get_user", return_value=USER)

@@ -44,10 +44,22 @@ def favorite_place(token):
 
 def add_favorite(user, token, place):
     key = hashlib.sha256(json.dumps([place["name"], place["area"], place["lat"], place["lon"]], ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
-    store.call("/rest/v1/parking_favorites?on_conflict=user_id,place_key", method="POST", token=token,
-               body={"user_id": user["id"], "place_key": key, **place},
-               prefer="resolution=ignore-duplicates,return=minimal")
-    return key
+    inserted = store.call("/rest/v1/parking_favorites?on_conflict=user_id,place_key&select=place_key", method="POST", token=token,
+                          body={"user_id": user["id"], "place_key": key, **place},
+                          prefer="resolution=ignore-duplicates,return=representation")
+    if (not isinstance(inserted, list) or len(inserted) > 1 or
+            (inserted and (not isinstance(inserted[0], dict) or inserted[0].get("place_key") != key))):
+        raise store.SupabaseError()
+    return {"place_key": key, "result": "added" if inserted else "already_saved"}
+
+
+def favorite_feedback(place, outcome):
+    added = outcome["result"] == "added"
+    return {"place_key": outcome["place_key"], "place_name": place["name"], "result": outcome["result"],
+            "result_label": "새로 찜했어요" if added else "이미 찜한 주차장이에요",
+            "next_action": "즐겨찾기 목록 열기" if added else "기존 항목 찾아 표시",
+            "choice_mode": "" if ai_assistant.configured() else "모의 선택",
+            "message": f"{place['name']}을(를) 즐겨찾기에 추가했어요." if added else f"{place['name']}은(는) 이미 즐겨찾기에 있어요."}
 
 
 def clear_login(user):
@@ -297,13 +309,20 @@ def favorites():
     try:
         if request.method == "GET":
             items = store.call("/rest/v1/parking_favorites?select=place_key,name,area,lat,lon,created_at&order=created_at.desc&limit=200", token=token)
+            focus = request.args.get("focus", "")
+            if focus:
+                if not re.fullmatch(r"[0-9a-f]{64}", focus):
+                    abort(400)
+                if not any(item["place_key"] == focus for item in items):
+                    found = store.call("/rest/v1/parking_favorites?select=place_key,name,area,lat,lon,created_at&place_key=eq." + focus + "&limit=1", token=token)
+                    items = found + items
             return jsonify(favorites=items)
         check_form_token()
         action = request.form.get("action")
         if action == "add":
             place = favorite_place(request.form.get("place", ""))
-            add_favorite(user, token, place)
-            return jsonify(message=f"{place['name']}을(를) 즐겨찾기에 추가했습니다.")
+            outcome = add_favorite(user, token, place)
+            return jsonify(**favorite_feedback(place, outcome))
         if action == "delete":
             key = request.form.get("place_key", "")
             if not re.fullmatch(r"[0-9a-f]{64}", key):
@@ -349,10 +368,10 @@ def favorite_command():
         return jsonify(message="저장할 항목을 찾지 못했어요. 예: 1번 즐겨찾기 추가", mode=mode, remaining=remaining), 400
     try:
         place = places[number - 1]
-        add_favorite(user, session["access_token"], place)
+        outcome = add_favorite(user, session["access_token"], place)
     except store.SupabaseError:
         return jsonify(message="즐겨찾기를 저장하지 못했습니다.", mode=mode, remaining=remaining), 503
-    return jsonify(message=f"{place['name']}을(를) 즐겨찾기에 추가했습니다.", mode=mode, remaining=remaining)
+    return jsonify(**favorite_feedback(place, outcome), mode=mode, remaining=remaining)
 
 
 @parking_demo.route("/admin", methods=["GET", "POST"])
@@ -429,9 +448,11 @@ def assistant():
                     reply = "먼저 주차장을 검색하고, 저장할 주차장 이름이나 번호를 알려주세요."
                 else:
                     favorite = {key: place[key] for key in ("name", "area", "lat", "lon")}
-                    add_favorite(user, session["access_token"], favorite)
-                    reply = f"{place['name']}을(를) 즐겨찾기에 추가했어요."
+                    outcome = add_favorite(user, session["access_token"], favorite)
+                    feedback = favorite_feedback(favorite, outcome)
+                    reply = f"{feedback['place_name']} · 첫 결과: {feedback['result_label']} · 선택한 행동: {feedback['next_action']}"
                     extra["favorites_changed"] = True
+                    extra["favorite_feedback"] = feedback
             elif action == "favorite_remove":
                 items = store.call("/rest/v1/parking_favorites?select=place_key,name,area,lat,lon,created_at&order=created_at.desc&limit=200", token=session["access_token"])
                 number, name = answer.get("number", 0), answer.get("target_name", "")

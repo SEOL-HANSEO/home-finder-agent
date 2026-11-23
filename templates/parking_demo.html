@@ -147,6 +147,8 @@
     .favorite-box p { margin-top: 8px; color: var(--muted); font-size: 13px; }
     .favorite-list { list-style: none; padding: 0; margin: 16px 0 0; }
     .favorite-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+    .favorite-list li.is-highlighted { background: #dcf4e4; border-radius: 10px; padding-left: 12px; padding-right: 12px; outline: 2px solid #47a86c; }
+    [data-theme="dark"] .favorite-list li.is-highlighted { background: #234b35; outline-color: #69c78a; }
     .favorite-list small { display: block; color: var(--muted); }
     .favorite-command { display: flex; gap: 8px; margin-top: 16px; }
     .favorite-command input { flex: 1; min-width: 0; }
@@ -321,19 +323,25 @@
     const form = document.getElementById('favorite-command');
     const endpoint = {{ url_for('parking_demo.favorites') | tojson }};
     const csrf = form.querySelector('[name=form_token]').value;
+    let refreshVersion = 0;
     async function request(url, body) {
       const response = await fetch(url, body ? {method: 'POST', body} : {});
       const data = await response.json().catch(() => ({}));
       if (!response.ok) { const error = new Error(data.message || '요청을 처리하지 못했습니다.'); error.data = data; throw error; }
       return data;
     }
-    async function refresh() {
+    async function refresh(feedback = null) {
+      const version = ++refreshVersion;
       try {
-        const data = await request(endpoint);
+        const url = feedback?.place_key ? endpoint + '?focus=' + encodeURIComponent(feedback.place_key) : endpoint;
+        const data = await request(url);
+        if (version !== refreshVersion) return;
         list.replaceChildren();
         if (!data.favorites.length) { const empty = document.createElement('li'); empty.textContent = '아직 즐겨찾기가 없습니다.'; list.appendChild(empty); }
+        let target = null;
         data.favorites.forEach((place) => {
           const item = document.createElement('li');
+          if (feedback && place.place_key === feedback.place_key) target = item;
           const info = document.createElement('span');
           const name = document.createElement('strong'); name.textContent = place.name;
           const address = document.createElement('small'); address.textContent = place.area;
@@ -348,18 +356,33 @@
           });
           item.append(info, remove); list.appendChild(item);
         });
-      } catch (error) { list.textContent = ''; status.textContent = error.message; }
+        if (feedback) {
+          if (!target) throw new Error('해당 항목을 목록에서 찾지 못했습니다.');
+          if (feedback.result === 'already_saved') {
+            target.classList.add('is-highlighted');
+            target.scrollIntoView({behavior: 'smooth', block: 'center'});
+          } else {
+            document.getElementById('favorite-heading').scrollIntoView({behavior: 'smooth', block: 'start'});
+          }
+          const prefix = feedback.choice_mode ? feedback.choice_mode + ' · ' : '';
+          status.textContent = `${prefix}${feedback.place_name} · 첫 결과: ${feedback.result_label} · 선택한 행동: ${feedback.next_action}`;
+        }
+      } catch (error) {
+        if (version !== refreshVersion) return;
+        if (feedback) status.textContent = `첫 결과: ${feedback.result_label} · 행동 미완료: ${error.message}`;
+        else { list.textContent = ''; status.textContent = error.message; }
+      }
     }
     document.getElementById('results-body').addEventListener('click', async (event) => {
       const button = event.target.closest('[data-favorite-token]');
       if (!button) return;
       button.disabled = true;
       const body = new FormData(); body.set('form_token', csrf); body.set('action', 'add'); body.set('place', button.dataset.favoriteToken);
-      try { const result = await request(endpoint, body); status.textContent = result.message; await refresh(); }
+      try { const result = await request(endpoint, body); await refresh(result); }
       catch (error) { status.textContent = error.message; }
       finally { button.disabled = false; }
     });
-    window.addEventListener('parking:favorites', refresh);
+    window.addEventListener('parking:favorites', (event) => { refresh(event.detail || null); });
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       const button = form.querySelector('button'); button.disabled = true; status.textContent = '요청을 처리하고 있습니다…';
@@ -373,8 +396,8 @@
       try {
         const result = await request(form.action, body);
         mode.textContent = result.mode;
-        status.textContent = result.message + (Number.isInteger(result.remaining) && result.remaining >= 0 ? ` · 오늘 남은 AI 횟수 ${result.remaining}회` : '');
-        await refresh();
+        await refresh(result);
+        if (Number.isInteger(result.remaining) && result.remaining >= 0) status.textContent += ` · 오늘 남은 AI 횟수 ${result.remaining}회`;
       } catch (error) {
         if (error.data?.mode) mode.textContent = error.data.mode;
         status.textContent = error.message + (Number.isInteger(error.data?.remaining) && error.data.remaining >= 0 ? ` · 오늘 남은 AI 횟수 ${error.data.remaining}회` : '');

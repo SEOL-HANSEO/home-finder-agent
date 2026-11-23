@@ -82,8 +82,11 @@
       }
       if (data.preferences) window.dispatchEvent(new CustomEvent('parking:preferences', {detail: data.preferences}));
       if (data.favorites_changed) {
-        window.dispatchEvent(new CustomEvent('parking:favorites'));
-        if (!document.getElementById('favorite-list')) data.navigate = {{ url_for('parking_demo.parking', from_chat='1') | tojson }} + '#favorite-heading';
+        window.dispatchEvent(new CustomEvent('parking:favorites', {detail: data.favorite_feedback || null}));
+        if (!document.getElementById('favorite-list')) {
+          if (data.favorite_feedback) try { sessionStorage.setItem('parking-pending-favorite', JSON.stringify(data.favorite_feedback)); } catch (_) {}
+          data.navigate = {{ url_for('parking_demo.parking', from_chat='1') | tojson }} + '#favorite-heading';
+        }
       }
       if (data.search) {
         if (document.getElementById('results-body')) window.dispatchEvent(new CustomEvent('parking:search', {detail: data.search}));
@@ -108,6 +111,9 @@
       const pending = JSON.parse(sessionStorage.getItem('parking-pending-operation') || 'null');
       sessionStorage.removeItem('parking-pending-operation');
       if (pending) window.dispatchEvent(new CustomEvent('parking:operation', {detail: pending}));
+      const favorite = JSON.parse(sessionStorage.getItem('parking-pending-favorite') || 'null');
+      sessionStorage.removeItem('parking-pending-favorite');
+      if (favorite) window.dispatchEvent(new CustomEvent('parking:favorites', {detail: favorite}));
     } catch (_) {}
   });
   render();
