@@ -47,7 +47,7 @@ def geocode(location):
             try:
                 # Photon is a secondary geocoder for when the primary service is unavailable.
                 params = urlencode({
-                    "q": location, "lang": "ko", "limit": 1,
+                    "q": location, "limit": 1,
                     "lat": 36.5, "lon": 127.5,
                     "bbox": "124,33,132,39",
                 })
@@ -61,23 +61,6 @@ def geocode(location):
                 if features:
                     lon, lat = features[0]["geometry"]["coordinates"][:2]
                     result = (float(lat), float(lon))
-            except (URLError, OSError, ValueError, KeyError, IndexError, TypeError):
-                failed = True
-        if not _valid_coordinates(result):
-            try:
-                # Open-Meteo is a third, independent fallback for geocoder outages.
-                params = urlencode({"name": location, "countryCode": "KR", "count": 10, "language": "ko"})
-                req = Request(
-                    "https://geocoding-api.open-meteo.com/v1/search?" + params,
-                    headers={"User-Agent": f"FreeParkingFinder/1.0 ({APP_URL})", "Accept": "application/json"},
-                )
-                with urlopen(req, timeout=10) as response:
-                    data = json.load(response)
-                for place in data.get("results", []):
-                    candidate = (float(place["latitude"]), float(place["longitude"]))
-                    if _valid_coordinates(candidate):
-                        result = candidate
-                        break
             except (URLError, OSError, ValueError, KeyError, IndexError, TypeError):
                 failed = True
         if not _valid_coordinates(result):

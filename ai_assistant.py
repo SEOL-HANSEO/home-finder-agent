@@ -114,7 +114,7 @@ def respond(message, history, places=None, authenticated=False):
             requested = re.sub(r"\s*(?:근처|주변|인근|가까이)$", "", location.strip())
             normalized = re.sub(r"[^\w가-힣]", "", requested.casefold())
             base = re.sub(r"(?:특별자치도|특별자치시|광역시|특별시|시|군|구|읍|면|동|역)$", "", normalized)
-            context_reference = bool(re.search(r"(거기|그\s*근처|같은\s*곳|이\s*근처|앞서\s*검색|아까\s*검색|더\s*찾아)", message))
+            context_reference = bool(re.search(r"(거기|그\s*근처|같은\s*곳|이\s*근처|앞서\s*검색|아까\s*검색|더\s*찾아)", message)) or bool(re.fullmatch(r"\s*(?:노상|노외|전체|무료|가까운\s*곳|다시)(?:으로|만|도|요|요청|\s*찾아줘|\s*보여줘|\s*해줘)*[.!?\s]*", message))
             if normalized not in current_text and not (len(base) >= 2 and base in current_text):
                 if context_reference and normalized and normalized in prior_text:
                     pass
